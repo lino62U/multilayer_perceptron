@@ -3,8 +3,10 @@
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
+#include <fstream>  // Para leer el archivo
 
 #define LEARNING_RATE 0.1f
+#define RANDOM_SEED 42  // Semilla fija
 
 using namespace std;
 
@@ -12,10 +14,11 @@ struct Neurona {
     float salida = 0.0f;
     float net = 0.0f;
     float delta = 0.0f;
+    bool esBias = false;
     bool esSalida = false;
 
-    vector<pair<Neurona*, float*>> entradas; // Neuronas anteriores
-    vector<pair<Neurona*, float*>> salidas;  // Neuronas siguientes
+    vector<pair<Neurona*, float*>> entradas;
+    vector<pair<Neurona*, float*>> salidas;
 
     float funcion_activacion(float x) {
         return 1.0f / (1.0f + exp(-x));
@@ -26,6 +29,11 @@ struct Neurona {
     }
 
     void calcularSalida() {
+        if (esBias) {
+            salida = 1.0f;
+            return;
+        }
+
         float suma = 0.0f;
         for (auto& entrada : entradas) {
             suma += *(entrada.second) * entrada.first->salida;
@@ -47,6 +55,7 @@ struct Neurona {
     }
 
     void actualizarPesos() {
+        if (esBias) return;
         for (auto& entrada : entradas) {
             *(entrada.second) -= LEARNING_RATE * delta * entrada.first->salida;
         }
@@ -58,22 +67,33 @@ class PerceptronMulticapa {
 
 public:
     void crearRed(const vector<int>& estructura) {
-        srand(static_cast<unsigned>(time(0)));
+        srand(RANDOM_SEED);  // Semilla fija
 
         for (int i = 0; i < estructura.size(); ++i) {
             vector<Neurona*> capa;
-            for (int j = 0; j < estructura[i]; ++j) {
+
+            int n_neuronas = estructura[i];
+            if (i != estructura.size() - 1) n_neuronas += 1;  // Agregar bias si no es capa de salida
+
+            for (int j = 0; j < n_neuronas; ++j) {
                 Neurona* n = new Neurona();
+                if (i != estructura.size() - 1 && j == n_neuronas - 1) {
+                    n->esBias = true;
+                    n->salida = 1.0f;
+                }
                 n->esSalida = (i == estructura.size() - 1);
                 capa.push_back(n);
             }
+
             capas.push_back(capa);
         }
 
+        // Conectar neuronas capa a capa
         for (int i = 1; i < capas.size(); ++i) {
             for (auto& neurona : capas[i]) {
+                if (neurona->esBias) continue;  // El bias no recibe entradas
                 for (auto& anterior : capas[i - 1]) {
-                    float* peso = new float((rand() % 100) / 100.0f);
+                    float* peso = new float(((rand() % 100) / 100.0f) - 0.5f); // Peso entre -0.5 y 0.5
                     neurona->entradas.push_back({anterior, peso});
                     anterior->salidas.push_back({neurona, peso});
                 }
@@ -97,19 +117,17 @@ public:
     }
 
     void backpropagation(const vector<float>& objetivos) {
-        // Salida
         for (int i = 0; i < capas.back().size(); ++i) {
             capas.back()[i]->calcularDeltaSalida(objetivos[i]);
         }
 
-        // Capas ocultas
         for (int i = capas.size() - 2; i > 0; --i) {
             for (auto& neurona : capas[i]) {
-                neurona->calcularDeltaOculta();
+                if (!neurona->esBias)
+                    neurona->calcularDeltaOculta();
             }
         }
 
-        // Actualizar pesos
         for (int i = 1; i < capas.size(); ++i) {
             for (auto& neurona : capas[i]) {
                 neurona->actualizarPesos();
@@ -126,29 +144,104 @@ public:
     }
 
     void imprimirRed() {
-        for (int i = 0; i < capas.size(); ++i) {
-            cout << "Capa " << i << ":\n";
-            for (auto& neurona : capas[i]) {
-                cout << "  Salida: " << neurona->salida << ", Delta: " << neurona->delta << endl;
+    for (int i = 0; i < capas.size(); ++i) {
+        cout << "Capa " << i << ":\n";
+        for (auto& neurona : capas[i]) {
+            cout << "  Neurona ";
+            if (neurona->esBias) {
+                cout << "[bias] ";
+            }
+            cout << "Salida: " << neurona->salida << ", Delta: " << neurona->delta << endl;
+
+            if (!neurona->entradas.empty()) {
+                cout << "    Pesos de entrada:\n";
+                for (auto& entrada : neurona->entradas) {
+                    cout << "      Desde neurona "
+                         << (entrada.first->esBias ? "[bias]" : "") 
+                         << " salida=" << entrada.first->salida
+                         << " -> peso=" << *(entrada.second) << endl;
+                }
             }
         }
     }
+}
+void imprimirPesosIniciales(const string& nombrePuerta) {
+    cout << "\n==============================\n";
+    cout << " Initial Weights for " << nombrePuerta << " Gate\n";
+    cout << "==============================\n";
+
+    for (int i = 1; i < capas.size(); ++i) { // Saltamos la capa de entrada
+        cout << "Layer " << i << ":\n";
+        for (int j = 0; j < capas[i].size(); ++j) {
+            if (capas[i][j]->esBias) continue; // No imprimimos bias como destino
+            cout << "  Neuron " << j << ":\n";
+            int entradaIdx = 0;
+            for (auto& entrada : capas[i][j]->entradas) {
+                string origen;
+                if (entrada.first->esBias) {
+                    origen = "bias";
+                } else {
+                    origen = (entradaIdx == 0 ? "A" : "B"); // Asumimos 2 entradas
+                    ++entradaIdx;
+                }
+                cout << "    From " << origen << ": weight = " << *(entrada.second) << endl;
+            }
+        }
+    }
+}
+
+
+
 };
+
+
+
+
+
+vector<vector<float>> leerDatos(const string& archivo) {
+    ifstream archivoEntrada(archivo);
+    vector<vector<float>> datos;
+
+    float x, y;
+    while (archivoEntrada >> x >> y) {
+        datos.push_back({x, y});
+    }
+
+    return datos;
+}
 
 int main() {
     PerceptronMulticapa red;
-    red.crearRed({2, 2, 1}); // 2 entradas, 2 ocultas, 1 salida
+    red.crearRed({2, 1}); // Clasificador lineal: 2 entradas, 1 salida
 
-    vector<float> entrada = {1.0f, 0.0f};
-    vector<float> objetivo = {1.0f};
+    red.imprimirPesosIniciales("AND");
 
-    red.entrenar(entrada, objetivo, 5000);
-    
-    red.establecerEntrada(entrada);
-    float resultado = red.ejecutarRed();
+    vector<vector<float>> entradas = {
+        {0.0f, 0.0f},
+        {0.0f, 1.0f},
+        {1.0f, 0.0f},
+        {1.0f, 1.0f}
+    };
 
-    cout << "Salida final: " << resultado << endl;
-    red.imprimirRed();
-    
+    vector<vector<float>> objetivos = {
+        {0.0f},
+        {0.0f},
+        {0.0f},
+        {1.0f}
+    };
+
+    for (int epoca = 0; epoca < 5000; ++epoca) {
+        for (int i = 0; i < entradas.size(); ++i) {
+            red.entrenar(entradas[i], objetivos[i], 1);
+        }
+    }
+
+    cout << "\nResultados del clasificador:\n";
+    for (int i = 0; i < entradas.size(); ++i) {
+        red.establecerEntrada(entradas[i]);
+        float salida = red.ejecutarRed();
+        cout << entradas[i][0] << " AND " << entradas[i][1] << " = " << salida << endl;
+    }
+
     return 0;
 }
