@@ -21,11 +21,11 @@ struct Neurona {
     vector<pair<Neurona*, float*>> salidas;
 
     float funcion_activacion(float x) {
-        return 1.0f / (1.0f + exp(-x));
+        return 1.0f / (1.0f + exp(-x));  // Sigmoide
     }
 
     float derivada_activacion(float y) {
-        return y * (1.0f - y);
+        return y * (1.0f - y);  // Derivada de la sigmoide
     }
 
     void calcularSalida() {
@@ -144,60 +144,30 @@ public:
     }
 
     void imprimirRed() {
-    for (int i = 0; i < capas.size(); ++i) {
-        cout << "Capa " << i << ":\n";
-        for (auto& neurona : capas[i]) {
-            cout << "  Neurona ";
-            if (neurona->esBias) {
-                cout << "[bias] ";
-            }
-            cout << "Salida: " << neurona->salida << ", Delta: " << neurona->delta << endl;
+        for (int i = 0; i < capas.size(); ++i) {
+            cout << "Capa " << i << ":\n";
+            for (auto& neurona : capas[i]) {
+                cout << "  Neurona ";
+                if (neurona->esBias) {
+                    cout << "[bias] ";
+                }
+                cout << "Salida: " << neurona->salida << ", Delta: " << neurona->delta << endl;
 
-            if (!neurona->entradas.empty()) {
-                cout << "    Pesos de entrada:\n";
-                for (auto& entrada : neurona->entradas) {
-                    cout << "      Desde neurona "
-                         << (entrada.first->esBias ? "[bias]" : "") 
-                         << " salida=" << entrada.first->salida
-                         << " -> peso=" << *(entrada.second) << endl;
+                if (!neurona->entradas.empty()) {
+                    cout << "    Pesos de entrada:\n";
+                    for (auto& entrada : neurona->entradas) {
+                        cout << "      Desde neurona "
+                             << (entrada.first->esBias ? "[bias]" : "") 
+                             << " salida=" << entrada.first->salida
+                             << " -> peso=" << *(entrada.second) << endl;
+                    }
                 }
             }
         }
     }
-}
-void imprimirPesosIniciales(const string& nombrePuerta) {
-    cout << "\n==============================\n";
-    cout << " Initial Weights for " << nombrePuerta << " Gate\n";
-    cout << "==============================\n";
-
-    for (int i = 1; i < capas.size(); ++i) { // Saltamos la capa de entrada
-        cout << "Layer " << i << ":\n";
-        for (int j = 0; j < capas[i].size(); ++j) {
-            if (capas[i][j]->esBias) continue; // No imprimimos bias como destino
-            cout << "  Neuron " << j << ":\n";
-            int entradaIdx = 0;
-            for (auto& entrada : capas[i][j]->entradas) {
-                string origen;
-                if (entrada.first->esBias) {
-                    origen = "bias";
-                } else {
-                    origen = (entradaIdx == 0 ? "A" : "B"); // Asumimos 2 entradas
-                    ++entradaIdx;
-                }
-                cout << "    From " << origen << ": weight = " << *(entrada.second) << endl;
-            }
-        }
-    }
-}
-
-
-
 };
 
-
-
-
-
+// Función para leer los datos desde un archivo
 vector<vector<float>> leerDatos(const string& archivo) {
     ifstream archivoEntrada(archivo);
     vector<vector<float>> datos;
@@ -212,36 +182,36 @@ vector<vector<float>> leerDatos(const string& archivo) {
 
 int main() {
     PerceptronMulticapa red;
-    red.crearRed({2, 1}); // Clasificador lineal: 2 entradas, 1 salida
+    red.crearRed({1, 1}); // 1 entrada (x), 1 salida (y)
 
-    red.imprimirPesosIniciales("AND");
+    vector<vector<float>> datos = leerDatos("datos_sinteticos.txt"); // Leer los datos desde el archivo
 
-    vector<vector<float>> entradas = {
-        {0.0f, 0.0f},
-        {0.0f, 1.0f},
-        {1.0f, 0.0f},
-        {1.0f, 1.0f}
-    };
-
-    vector<vector<float>> objetivos = {
-        {0.0f},
-        {0.0f},
-        {0.0f},
-        {1.0f}
-    };
-
-    for (int epoca = 0; epoca < 5000; ++epoca) {
-        for (int i = 0; i < entradas.size(); ++i) {
-            red.entrenar(entradas[i], objetivos[i], 1);
+    // Entrenamiento de la red
+    for (int epoca = 0; epoca < 50; ++epoca) {
+        for (int i = 0; i < datos.size(); ++i) {
+            red.entrenar({datos[i][0]}, {datos[i][1]}, 1);  // Entrenamiento con una entrada
         }
     }
 
-    cout << "\nResultados del clasificador:\n";
-    for (int i = 0; i < entradas.size(); ++i) {
-        red.establecerEntrada(entradas[i]);
+    // Imprimir los resultados en formato adecuado para Python
+    ofstream archivoSalida("resultados.txt");
+    for (int i = 0; i < datos.size(); ++i) {
+        red.establecerEntrada({datos[i][0]});
         float salida = red.ejecutarRed();
-        cout << entradas[i][0] << " AND " << entradas[i][1] << " = " << salida << endl;
+        archivoSalida << datos[i][0] << "," << salida << endl;
     }
+
+    archivoSalida.close();
+    cout << "Resultados guardados en 'resultados.txt'." << endl;
+
+    // Guardar predicciones para graficar en Python
+    ofstream salidaPred("predicciones.csv");
+    for (float x = 0.0f; x <= 1.0f; x += 0.01f) {
+        red.establecerEntrada({x});
+        float y = red.ejecutarRed();
+        salidaPred << x << "," << y << endl;
+    }
+    salidaPred.close();
 
     return 0;
 }

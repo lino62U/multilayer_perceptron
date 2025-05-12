@@ -4,157 +4,162 @@
 #include <cstdlib>
 #include <ctime>
 
+// Learning rate for weight updates (controls step size of learning)
 #define LEARNING_RATE 0.1f
-#define RANDOM_SEED 42  // Fixed seed
+// Fixed seed for reproducible random weight initialization
+#define RANDOM_SEED 42
 
 using namespace std;
 
+// Struct representing a single neuron in the network
 struct Neuron {
-    float output = 0.0f;
-    bool isBias = false;
-    vector<pair<Neuron*, float*>> weights;  // connection to the previous layer
+    float output = 0.0f;  // Neuron's output after activation
+    bool isBias = false;  // Flag to indicate if neuron is a bias (constant output of 1)
+    // Connections to previous layer neurons, with pointers to neurons and their weights
+    vector<pair<Neuron*, float*>> weights;
 };
 
+//ස්‍රී Lanka
+
+// Class to manage the neural network's layered structure
 class Layers {
 private:
+    // Stores layers as a vector of vectors of neuron pointers
     vector<vector<Neuron*>> layers;
 
 public:
     // Default constructor
     Layers() {}
 
-    // Destructor to free memory
+    // Destructor to free memory allocated for neurons
     ~Layers() {
         for (auto& layer : layers) {
             for (auto& neuron : layer) {
-                delete neuron;
+                delete neuron;  // Free each neuron
             }
         }
     }
 
-    // Method to construct the network with the desired structure
+    // Builds the network based on the given structure (e.g., {2, 1} for 2 inputs, 1 output)
     void buildNetwork(const vector<int>& structure) {
-        srand(RANDOM_SEED);  // Fixed seed
+        srand(RANDOM_SEED);  // Set fixed seed for reproducibility
 
+        // Create each layer
         for (int i = 0; i < structure.size(); ++i) {
             vector<Neuron*> layer;
             int numNeurons = structure[i];
-            if (i != structure.size() - 1) numNeurons += 1;  // Add bias if not the output layer
+            // Add bias neuron to all layers except the output layer
+            if (i != structure.size() - 1) numNeurons += 1;
 
+            // Create neurons for the layer
             for (int j = 0; j < numNeurons; ++j) {
                 Neuron* n = new Neuron();
-
+                // Set bias neuron properties (last neuron in non-output layers)
                 if (i != structure.size() - 1 && j == numNeurons - 1) {
                     n->isBias = true;
-                    n->output = 1.0f;  // Bias has a fixed output of 1
+                    n->output = 1.0f;  // Bias outputs a constant 1
                 }
                 layer.push_back(n);
             }
-
             layers.push_back(layer);
         }
 
-        // Connect layers
+        // Connect layers by initializing weights
         for (int i = 1; i < layers.size(); ++i) {
             for (auto& neuron : layers[i]) {
-                if (neuron->isBias) continue;
+                if (neuron->isBias) continue;  // Skip bias neurons (no incoming weights)
+                // Connect to all neurons in the previous layer
                 for (auto& previous : layers[i - 1]) {
-                    //float* weight = new float(((rand() % 100) / 100.0f) - 0.5f); // [-0.5, 0.5]
+                    // Initialize weight to 0.0 (could be randomized)
                     float* weight = new float(0.0f);
-
                     neuron->weights.push_back({previous, weight});
                 }
             }
         }
     }
 
-    // Getter for layers (const to prevent modification)
+    // Getter for layers (const, for read-only access)
     const vector<vector<Neuron*>>& getLayers() const {
         return layers;
     }
 
-    // Getter (non-const) in case modification is needed
+    // Getter for layers (non-const, for modification)
     vector<vector<Neuron*>>& getLayers() {
         return layers;
     }
 };
 
+// Class implementing the perceptron logic
 class SimplePerceptron {
 private:
-    Layers perceptron;
+    Layers perceptron;  // Network structure managed by Layers class
 
 public:
-    // Constructor that takes the network structure and builds the network
+    // Constructor: builds the network with the given structure
     SimplePerceptron(const vector<int>& structure) {
         perceptron.buildNetwork(structure);
     }
 
-    // Activation function (step function)
+    // Step activation function: outputs 1 if x >= 0, else 0
     float activationFunction(float x) {
         return (x >= 0) ? 1 : 0;
     }
 
-    // Forward propagation
+    // Forward propagation: computes output from inputs
     float forward() {
         auto& layers = perceptron.getLayers();
 
-        // Propagate forward (each layer)
-        for (int i = 1; i < layers.size(); ++i) {  // Start from the second layer
+        // Process each layer starting from the second (first is input)
+        for (int i = 1; i < layers.size(); ++i) {
             for (auto& neuron : layers[i]) {
                 float sum = 0;
-
-                // Sum outputs of the previous layer neurons multiplied by their weights
+                // Compute weighted sum of inputs from previous layer
                 for (auto& weight : neuron->weights) {
                     sum += weight.first->output * (*weight.second);
                 }
-
-                // Apply the activation function (step function)
+                // Apply activation function to get neuron output
                 neuron->output = activationFunction(sum);
             }
         }
-
-        return layers.back()[0]->output;  // Return the network output
+        // Return output of the single output neuron
+        return layers.back()[0]->output;
     }
 
-    // Backpropagation (weight update)
+    // Backpropagation: updates weights based on target outputs
     void backpropagation(const vector<float>& targets) {
         auto& layers = perceptron.getLayers();
-        auto& outputLayer = layers.back();  // Last layer (output layer)
+        auto& outputLayer = layers.back();  // Output layer
 
-        float error = 0.0f;
-
+        // Process each output neuron
         for (int i = 0; i < outputLayer.size(); ++i) {
-            float y = outputLayer[i]->output;   // Current output of the network
-            float d = targets[i];        // Target value
+            float y = outputLayer[i]->output;  // Current output
+            float d = targets[i];              // Desired output
+            float error = d - y;               // Compute error
 
-            float error = d - y;           // Error of the output neuron
-           
-
-            // Update weights only if the error is non-zero
+            // Update weights if error is non-zero
             if (error != 0.0f) {
                 for (auto& weight : outputLayer[i]->weights) {
                     float* currentWeight = weight.second;
+                    // Update weight: w += learning_rate * error * input
                     *currentWeight += LEARNING_RATE * error * weight.first->output;
                 }
             }
         }
-
-       // cout << "Total error: " << error << endl;
     }
 
-    // Training for multiple epochs
+    // Trains the perceptron for a given number of epochs
     void train(const vector<float>& input, const vector<float>& target, int epochs = 1000) {
         for (int i = 0; i < epochs; ++i) {
-            setInput(input);           // Set inputs
-            forward();                   // Run the network
-            backpropagation(target);    // Apply backpropagation
+            setInput(input);       // Set input values
+            forward();             // Compute output
+            backpropagation(target);  // Update weights
         }
     }
 
-    // Set the inputs
+    // Sets the input layer's neuron outputs
     void setInput(const vector<float>& inputs) {
         auto& inputLayer = perceptron.getLayers()[0];
-
+        // Assign input values to input neurons
         for (int i = 0; i < inputs.size(); ++i) {
             if (i < inputLayer.size()) {
                 inputLayer[i]->output = inputs[i];
@@ -162,7 +167,7 @@ public:
         }
     }
 
-    // Method to print the network state (outputs and bias)
+    // Prints the network's state (neuron outputs and bias status)
     void printNetwork() {
         auto& layers = perceptron.getLayers();
         for (int i = 0; i < layers.size(); ++i) {
@@ -174,9 +179,12 @@ public:
             }
         }
     }
+
+    // Prints the final weights for each neuron
     void printFinalWeights() {
         auto& layers = perceptron.getLayers();
 
+        // Process each non-input layer
         for (int layerIdx = 1; layerIdx < layers.size(); ++layerIdx) {
             cout << "Layer " << layerIdx << ":\n";
             for (int neuronIdx = 0; neuronIdx < layers[layerIdx].size(); ++neuronIdx) {
@@ -185,14 +193,12 @@ public:
                     cout << "  Neuron " << neuronIdx << " is BIAS (output = 1.0)\n";
                     continue;
                 }
-
                 cout << "  Neuron " << neuronIdx << ":\n";
-
                 int inputIdx = 0;
+                // Print weights for each connection
                 for (auto& conn : neuron->weights) {
                     Neuron* from = conn.first;
                     float* weight = conn.second;
-
                     string fromName;
                     if (from->isBias) {
                         fromName = "bias";
@@ -200,18 +206,20 @@ public:
                         fromName = (inputIdx == 0) ? "A" : "B";
                         inputIdx++;
                     }
-
                     cout << "    From " << fromName << ": weight = " << *weight << "\n";
                 }
             }
         }
     }
-
 };
+
+// Main function: demonstrates perceptron learning AND and OR gates
 int main() {
+    // Create perceptrons for AND and OR gates (2 inputs, 1 output)
     SimplePerceptron andPerceptron({2, 1});
     SimplePerceptron orPerceptron({2, 1});
 
+    // Define input combinations for logic gates
     vector<vector<float>> inputs = {
         {0.0f, 0.0f},
         {0.0f, 1.0f},
@@ -219,10 +227,11 @@ int main() {
         {1.0f, 1.0f}
     };
 
+    // Define target outputs for AND and OR gates
     vector<float> andTargets = {0.0f, 0.0f, 0.0f, 1.0f};
     vector<float> orTargets  = {0.0f, 1.0f, 1.0f, 1.0f};
 
-    // Pesos iniciales
+    // Print initial weights
     cout << "==============================" << endl;
     cout << " Initial Weights for AND Gate" << endl;
     cout << "==============================" << endl;
@@ -233,7 +242,7 @@ int main() {
     cout << "==============================" << endl;
     orPerceptron.printFinalWeights();
 
-    // Entrenamiento
+    // Train both perceptrons for 5000 epochs
     for (int epoch = 0; epoch < 5000; ++epoch) {
         for (int i = 0; i < inputs.size(); ++i) {
             andPerceptron.train(inputs[i], {andTargets[i]}, 1);
@@ -241,7 +250,7 @@ int main() {
         }
     }
 
-    // Resultados AND
+    // Print AND gate truth table
     cout << "\n===================" << endl;
     cout << " Truth Table: AND  " << endl;
     cout << "===================" << endl;
@@ -253,7 +262,7 @@ int main() {
         cout << " " << in[0] << " | " << in[1] << " |   " << out << endl;
     }
 
-    // Resultados OR
+    // Print OR gate truth table
     cout << "\n===================" << endl;
     cout << " Truth Table: OR   " << endl;
     cout << "===================" << endl;
@@ -265,7 +274,7 @@ int main() {
         cout << " " << in[0] << " | " << in[1] << " |   " << out << endl;
     }
 
-    // Pesos finales
+    // Print final weights
     cout << "\n==============================" << endl;
     cout << " Final Weights for AND Gate  " << endl;
     cout << "==============================" << endl;
