@@ -60,11 +60,11 @@ struct Neurona {
             suma += *(entrada.second) * entrada.first->salida;
         }
         net = suma;
-        salida = relu(suma);
+        salida = funcion_activacion(suma);
     }
 
     void calcularDeltaSalida(float objetivo) {
-        delta = (salida - objetivo) * derivada_relu(salida);
+        delta = (salida - objetivo) * derivada_activacion(salida);
     }
 
     void calcularDeltaOculta() {
@@ -72,7 +72,7 @@ struct Neurona {
         for (auto& s : salidas) {
             suma += *(s.second) * s.first->delta;
         }
-        delta = derivada_relu(salida) * suma;
+        delta = derivada_activacion(salida) * suma;
     }
 
     void actualizarPesos() {

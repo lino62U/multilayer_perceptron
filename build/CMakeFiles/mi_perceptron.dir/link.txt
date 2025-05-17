@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/mi_perceptron.dir/src/main.cpp.o CMakeFiles/mi_perceptron.dir/src/perceptron.cpp.o CMakeFiles/mi_perceptron.dir/src/layers.cpp.o CMakeFiles/mi_perceptron.dir/src/neuron.cpp.o -o mi_perceptron 
