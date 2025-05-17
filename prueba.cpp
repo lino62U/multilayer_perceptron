@@ -373,20 +373,10 @@ vector<int> parseEstructuraRed(const string& estructura) {
     return red;
 }
 
-int main(int argc, char* argv[]) {
-    string modelo = "modelo_mnist.bin";
-    vector<int> estructuraRed = {784, 128, 64, 10};
-    int epocas = 10;
-
-    if (argc > 1) {
-        modelo = argv[1];
-        if (argc > 2) {
-            estructuraRed = parseEstructuraRed(argv[2]);
-        }
-        if (argc > 3) {
-            epocas = stoi(argv[3]);
-        }
-    }
+int main() {
+    string modelo = "modelo_and_sin_capa_oculta.bin";
+    vector<int> estructuraRed = {2, 1};  // Sin capa oculta
+    int epocas = 1000;
 
     PerceptronMulticapa red;
 
@@ -395,23 +385,38 @@ int main(int argc, char* argv[]) {
         red.crearRed(estructuraRed);
         red.cargarPesos(modelo);
     } else {
-        cout << "Archivo no encontrado. Entrenando nuevo modelo y guardando en: " << modelo << endl;
+        cout << "Entrenando modelo AND sin capa oculta y guardando en: " << modelo << endl;
         red.crearRed(estructuraRed);
 
-        const int cantidad = 1000;  // Puedes ajustar esto según necesidad
-        auto imagenes = leerImagenesMNIST("dataset/mnist/train-images.idx3-ubyte", cantidad);
-        auto etiquetas = leerEtiquetasMNIST("dataset/mnist/train-labels.idx1-ubyte", cantidad);
+        // Datos de entrada y salida para la compuerta AND
+        vector<vector<float>> entradas = {
+            {0, 0},
+            {0, 1},
+            {1, 0},
+            {1, 1}
+        };
 
-        entrenarModelo(red, imagenes, etiquetas, epocas);
+        vector<vector<float>> salidas = {
+            {0},
+            {0},
+            {0},
+            {1}
+        };
 
+        entrenarModelo(red, entradas, salidas, epocas);
         red.guardarPesos(modelo);
     }
 
-    // Prueba
-    auto imagenes_test = leerImagenesMNIST("dataset/mnist/t10k-images.idx3-ubyte", 10);
-    auto etiquetas_test = leerEtiquetasMNIST("dataset/mnist/t10k-labels.idx1-ubyte", 10);
+    // Prueba del modelo
+    cout << "\nPruebas del modelo AND:" << endl;
+    vector<vector<float>> entradas_test = {
+        {0, 0},
+        {0, 1},
+        {1, 0},
+        {1, 1}
+    };
 
-    probarModelo(red, imagenes_test, etiquetas_test);
+    red.imprimirRed();
 
     return 0;
 }
