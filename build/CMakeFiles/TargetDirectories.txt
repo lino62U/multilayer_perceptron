@@ -1,3 +1,0 @@
-/home/lupo/Documents/topicos_ia/multilayer_perceptron/build/CMakeFiles/mi_perceptron.dir
-/home/lupo/Documents/topicos_ia/multilayer_perceptron/build/CMakeFiles/edit_cache.dir
-/home/lupo/Documents/topicos_ia/multilayer_perceptron/build/CMakeFiles/rebuild_cache.dir
