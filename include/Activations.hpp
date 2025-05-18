@@ -76,4 +76,23 @@ namespace Activations {
     }
 }
 
+static inline int getActivationId(const ActivationFunction& act) {
+        using namespace Activations;
+        if (act.activate == Sigmoid().activate && act.derive == Sigmoid().derive) return 0;
+        if (act.activate == ReLU().activate && act.derive == ReLU().derive) return 1;
+        if (act.activate == Tanh().activate && act.derive == Tanh().derive) return 2;
+        if (act.activate == Softmax().activate && act.derive == Softmax().derive) return 3;
+        return -1;
+    }
+
+    static inline ActivationFunction getActivationById(int id) {
+        using namespace Activations;
+        switch (id) {
+            case 0: return Sigmoid();
+            case 1: return ReLU();
+            case 2: return Tanh();
+            case 3: return Softmax();
+            default: throw std::runtime_error("Unknown activation id in model loading");
+        }
+    }
 #endif // ACTIVATIONS_HPP

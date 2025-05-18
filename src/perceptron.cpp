@@ -82,6 +82,10 @@ void MultilayerPerceptron::trainDataset(const vector<vector<float>>& inputs,
         throw runtime_error("Inputs and targets must have the same size");
     }
 
+    // Determina cada cuántas épocas imprimir, máximo 20 líneas
+    int max_lines = 20;
+    int print_interval = max(1, epochs / max_lines);
+
     for (int epoch = 0; epoch < epochs; ++epoch) {
         float total_loss = 0.0f;
         int correct = 0;
@@ -100,15 +104,18 @@ void MultilayerPerceptron::trainDataset(const vector<vector<float>>& inputs,
             if (predicted == actual) correct++;
         }
 
-        // Mostrar estadísticas de la época
-        float avg_loss = total_loss / inputs.size();
-        float accuracy = static_cast<float>(correct) / inputs.size() * 100.0f;
+        // Mostrar solo en intervalos
+        if ((epoch + 1) % print_interval == 0 || epoch == epochs - 1 || epoch == 0) {
+            float avg_loss = total_loss / inputs.size();
+            float accuracy = static_cast<float>(correct) / inputs.size() * 100.0f;
 
-        cout << "Epoch " << epoch + 1 << "/" << epochs 
-             << " - Loss: " << avg_loss 
-             << " - Accuracy: " << accuracy << "%" << endl;
+            cout << "Epoch " << epoch + 1 << "/" << epochs 
+                 << " - Loss: " << avg_loss 
+                 << " - Accuracy: " << accuracy << "%" << endl;
+        }
     }
 }
+
 
 float MultilayerPerceptron::calculateLoss(const vector<float>& output, const vector<float>& target) const {
     float loss = 0.0f;
@@ -144,23 +151,32 @@ void MultilayerPerceptron::saveModel(const string& filename) const {
         throw runtime_error("Cannot open file for writing: " + filename);
     }
 
-    // Guardar arquitectura
+    // Guardar arquitectura (número de neuronas sin bias)
     vector<int> architecture;
     for (size_t i = 0; i < layers.size(); ++i) {
         int neurons = layers[i]->size();
-        if (i != layers.size()-1) neurons--; // Excluir bias
+        if (i != layers.size()-1) neurons--; // Excluir bias en capas que no son salida
         architecture.push_back(neurons);
     }
-    
+
     size_t num_layers = architecture.size();
     file.write(reinterpret_cast<const char*>(&num_layers), sizeof(size_t));
     file.write(reinterpret_cast<const char*>(architecture.data()), num_layers * sizeof(int));
+
+    // Guardar IDs de funciones de activación (para capas ocultas y salida)
+    // Nota: la capa 0 es input y no tiene activación
+    for (size_t i = 1; i < layers.size(); ++i) {
+        int act_id = getActivationId(layers[i]->activation);
+        if (act_id == -1) throw runtime_error("Unknown activation function when saving model");
+        file.write(reinterpret_cast<const char*>(&act_id), sizeof(int));
+    }
 
     // Guardar pesos
     for (size_t i = 1; i < layers.size(); ++i) {
         layers[i]->saveWeights(file);
     }
 }
+
 
 void MultilayerPerceptron::loadModel(const string& filename) {
     ifstream file(filename, ios::binary);
@@ -175,10 +191,15 @@ void MultilayerPerceptron::loadModel(const string& filename) {
     vector<int> architecture(num_layers);
     file.read(reinterpret_cast<char*>(architecture.data()), num_layers * sizeof(int));
 
-    // Recrear la red
-    vector<ActivationFunction> activations(num_layers - 1, Activations::Sigmoid());
-    if (num_layers > 1) activations.back() = Activations::Softmax();
-    
+    // Leer activaciones
+    vector<ActivationFunction> activations;
+    for (size_t i = 1; i < num_layers; ++i) {  // empiezas en 1 porque input no tiene activación
+        int act_id;
+        file.read(reinterpret_cast<char*>(&act_id), sizeof(int));
+        activations.push_back(getActivationById(act_id));
+    }
+
+    // Recrear la red con arquitectura y activaciones
     createNetwork(architecture, activations);
 
     // Cargar pesos
@@ -186,6 +207,7 @@ void MultilayerPerceptron::loadModel(const string& filename) {
         layers[i]->loadWeights(file);
     }
 }
+
 
 void MultilayerPerceptron::printNetwork() const {
     for (size_t i = 0; i < layers.size(); ++i) {

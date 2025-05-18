@@ -7,11 +7,11 @@
 class Layer {
 protected:
     vector<Neuron*> neurons;
-    ActivationFunction activation;
     bool is_output_layer = false;
     bool softmax_enabled = false;
 
 public:
+    ActivationFunction activation;
     Layer(int num_neurons, ActivationFunction act, bool has_bias = true);
     ~Layer();
     

@@ -376,6 +376,7 @@ vector<int> parseEstructuraRed(const string& estructura) {
 int main(int argc, char* argv[]) {
     string modelo = "modelo_mnist.bin";
     vector<int> estructuraRed = {784, 128, 64, 10};
+    //mnist_mlp.createNetwork({784, 128, 10}, {Activations::ReLU(), Activations::Softmax()});
     int epocas = 10;
 
     if (argc > 1) {
