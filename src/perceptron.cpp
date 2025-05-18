@@ -7,227 +7,199 @@
 
 #define LEARNING_RATE 0.1f
 
-MultiLayerPerceptron::MultiLayerPerceptron(const std::vector<int>& structure, const ActivationFunction & activationFunction, float learningRate) {
-    perceptron.buildNetwork(structure, activationFunction, learningRate);
+// -------------------- Perceptrón Multicapa --------------------
+MultilayerPerceptron::~MultilayerPerceptron() {
+    for (auto& layer : layers) {
+        delete layer;
+    }
 }
 
+void MultilayerPerceptron::createNetwork(const vector<int>& architecture, 
+                  const vector<ActivationFunction>& activations) {
+    if (activations.size() != architecture.size() - 1) {
+        throw runtime_error("Number of activation functions must match hidden layers + output");
+    }
+    
+    softmax_output = (activations.back().activate == nullptr);
 
-std::vector<float> MultiLayerPerceptron::forward() {
+    // Crear capas
+    for (size_t i = 0; i < architecture.size(); ++i) {
+        bool has_bias = (i != architecture.size()-1);
+        ActivationFunction act = (i == 0) ? Activations::Sigmoid() : activations[i-1];
+        
+        Layer* layer = new Layer(architecture[i], act, has_bias);
+        if (i == architecture.size()-1) {
+            layer->setAsOutputLayer(softmax_output);
+        }
+        layers.push_back(layer);
+    }
 
-    auto& layers = perceptron.getLayers();
+    // Conectar capas
+    for (size_t i = 0; i < layers.size()-1; ++i) {
+        layers[i]->connectTo(layers[i+1]);
+    }
+}
 
+void MultilayerPerceptron::setInput(const vector<float>& inputs) const{
+    layers[0]->setInputs(inputs);
+}
+
+vector<float> MultilayerPerceptron::forwardPropagate() const{
     for (size_t i = 1; i < layers.size(); ++i) {
-        for (auto& neurona : layers[i]) {
-            neurona->forward();
+        layers[i]->computeOutputs();
+        if (i == layers.size()-1 && softmax_output) {
+            layers[i]->applySoftmax();
         }
     }
-
-    std::vector<float> salidas;
-    for (auto& neurona : layers.back()) {
-        if (!neurona->getIsBias())
-            salidas.push_back(neurona->getOutput());
-    }
-    return salidas;
-
+    return layers.back()->getOutputs();
 }
 
-void MultiLayerPerceptron::backpropagation(const std::vector<float>& targets) {
-    auto& layers = perceptron.getLayers();
+void MultilayerPerceptron::backPropagate(const vector<float>& targets) {
+    // Capa de salida
+    layers.back()->computeDeltas(&targets);
 
-     // Capa de salida
-    for (size_t i = 0; i < layers.back().size(); ++i) {
-        if (!layers.back()[i]->getIsBias())
-            layers.back()[i]->computeOutputDelta(targets[i]);
-    }
-
-    // Capas ocultas hacia atrás
-    for (int i = layers.size() - 2; i > 0; --i) {
-        for (auto& neurona : layers[i]) {
-            if (!neurona->getIsBias())
-                neurona->computeHiddenDelta();
-        }
+    // Capas ocultas
+    for (int i = layers.size()-2; i >= 0; --i) {
+        layers[i]->computeDeltas();
     }
 
     // Actualizar pesos
     for (size_t i = 1; i < layers.size(); ++i) {
-        for (auto& neurona : layers[i]) {
-            neurona->updateWeights();
-        }
-    }
-
-   
-}
-
-
-void MultiLayerPerceptron::setInput(const std::vector<float>& inputs) {
-    auto& inputLayer = perceptron.getLayers()[0];
-    for (int i = 0; i < inputs.size(); ++i) {
-        inputLayer[i]->setOutput( inputs[i] );
+        layers[i]->updateWeights();
     }
 }
 
-void MultiLayerPerceptron::printNetwork() {
-    auto& layers = perceptron.getLayers();
-    for (int i = 0; i < layers.size(); ++i) {
-        std::cout << "Layer " << i << ":\n";
-        for (auto& neuron : layers[i]) {
-            std::cout << "  Output: " << neuron->getOutput();
-            if (neuron->getIsBias()) std::cout << " [bias]";
-            std::cout << std::endl;
-        }
-    }
+void MultilayerPerceptron::train(const vector<float>& input, const vector<float>& target) {
+    setInput(input);
+    forwardPropagate();
+    backPropagate(target);
 }
 
-void MultiLayerPerceptron::printFinalWeights() {
-    auto& layers = perceptron.getLayers();
-
-    for (int layerIdx = 1; layerIdx < layers.size(); ++layerIdx) {
-        std::cout << "Layer " << layerIdx << ":\n";
-        for (int neuronIdx = 0; neuronIdx < layers[layerIdx].size(); ++neuronIdx) {
-            Neuron* neuron = layers[layerIdx][neuronIdx];
-            if (neuron->getIsBias()) {
-                std::cout << "  Neuron " << neuronIdx << " is BIAS\n";
-                continue;
-            }
-            std::cout << "  Neuron " << neuronIdx << ":\n";
-            int inputIdx = 0;
-            for (auto& conn : neuron->getNext()) {
-                std::string fromName = conn.first->getIsBias() ? "bias" : std::string(1, 'A' + inputIdx++);
-                std::cout << "    From " << fromName << ": weight = " << *conn.second << "\n";
-            }
-        }
-    }
-}
-
-
-void MultiLayerPerceptron::saveWeights(const std::string& filename) {
-    // Crea la carpeta 'models' si no existe
-    std::filesystem::create_directories("models");
-
-    std::ofstream file("../models/" + filename, std::ios::binary);
-    if (!file) {
-        std::cerr << "Error opening file for saving weights.\n";
-        return;
+void MultilayerPerceptron::trainDataset(const vector<vector<float>>& inputs, 
+                                       const vector<vector<float>>& targets, 
+                                       int epochs, int batch_size) {
+    if (inputs.size() != targets.size()) {
+        throw runtime_error("Inputs and targets must have the same size");
     }
 
-    const auto& network = perceptron.getLayers();
-    for (size_t i = 1; i < network.size(); ++i) {
-        for (const auto& neuron : network[i]) {
-            for (const auto& input : neuron->getPrev()) {
-                float* weight = input.second;
-                file.write(reinterpret_cast<char*>(weight), sizeof(float));
-            }
-        }
-    }
-    file.close();
-    std::cout << "Weights saved to models/" << filename << "\n";
-}
-
-void MultiLayerPerceptron::loadWeights(const std::string& filename) {
-    std::ifstream file("../models/" + filename, std::ios::binary);
-    if (!file) {
-        std::cerr << "Error opening file for loading weights.\n";
-        return;
-    }
-
-    auto& network = perceptron.getLayers();
-    for (size_t i = 1; i < network.size(); ++i) {
-        for (const auto& neuron : network[i]) {
-            for (const auto& input : neuron->getPrev()) {
-                float* weight = input.second;
-                file.read(reinterpret_cast<char*>(weight), sizeof(float));
-            }
-        }
-    }
-    file.close();
-    std::cout << "Weights loaded from models/" << filename << "\n";
-}
-
-
-float MultiLayerPerceptron::calculateLoss(const std::vector<float>& output,
-                                          const std::vector<float>& target) const {
-    float loss = 0.0f;
-    for (size_t i = 0; i < output.size(); ++i)
-        loss += 0.5f * std::pow(output[i] - target[i], 2);
-    return loss;
-}
-
-float MultiLayerPerceptron::evaluateAccuracy(const std::vector<std::vector<float>>& inputs,
-                                             const std::vector<std::vector<float>>& targets) const {
-    int correct = 0;
-    for (size_t i = 0; i < inputs.size(); ++i) {
-        const auto& input = inputs[i];
-        const auto& target = targets[i];
-
-        const_cast<MultiLayerPerceptron*>(this)->setInput(input);  // for calling forward()
-        auto output = const_cast<MultiLayerPerceptron*>(this)->forward();
-
-        int pred = std::max_element(output.begin(), output.end()) - output.begin();
-        int real = std::max_element(target.begin(), target.end()) - target.begin();
-        if (pred == real) ++correct;
-    }
-    return (correct * 100.0f) / inputs.size();
-}
-
-void MultiLayerPerceptron::trainDataset(const std::vector<std::vector<float>>& inputs,
-                                        const std::vector<std::vector<float>>& targets,
-                                        int epochs) {
-    for (int epoca = 0; epoca < epochs; ++epoca) {
+    for (int epoch = 0; epoch < epochs; ++epoch) {
         float total_loss = 0.0f;
         int correct = 0;
 
         for (size_t i = 0; i < inputs.size(); ++i) {
             setInput(inputs[i]);
-            auto output = forward();
+            auto output = forwardPropagate();
+            backPropagate(targets[i]);
+
+            // Calcular pérdida y precisión
             total_loss += calculateLoss(output, targets[i]);
-
-            int pred = std::max_element(output.begin(), output.end()) - output.begin();
-            int real = std::max_element(targets[i].begin(), targets[i].end()) - targets[i].begin();
-            if (pred == real) ++correct;
-
-            backpropagation(targets[i]);
+            
+            // Para precisión
+            int predicted = distance(output.begin(), max_element(output.begin(), output.end()));
+            int actual = distance(targets[i].begin(), max_element(targets[i].begin(), targets[i].end()));
+            if (predicted == actual) correct++;
         }
 
-        std::cout << "Época " << epoca + 1
-                  << " | Accuracy: " << (correct * 100.0 / inputs.size())
-                  << "% | Loss: " << total_loss / inputs.size() << "\n";
+        // Mostrar estadísticas de la época
+        float avg_loss = total_loss / inputs.size();
+        float accuracy = static_cast<float>(correct) / inputs.size() * 100.0f;
+
+        cout << "Epoch " << epoch + 1 << "/" << epochs 
+             << " - Loss: " << avg_loss 
+             << " - Accuracy: " << accuracy << "%" << endl;
     }
 }
 
-void MultiLayerPerceptron::mostrarImagenConsola(const std::vector<float>& imagen) const {
-    const std::string escala = " .:-=+*#%@";
-    for (int i = 0; i < 28; ++i) {
-        for (int j = 0; j < 28; ++j) {
-            float pixel = imagen[i * 28 + j];
-            int nivel = static_cast<int>(pixel * (escala.size() - 1));
-            std::cout << escala[nivel];
-        }
-        std::cout << '\n';
+float MultilayerPerceptron::calculateLoss(const vector<float>& output, const vector<float>& target) const {
+    float loss = 0.0f;
+    for (size_t i = 0; i < output.size(); ++i) {
+        loss += 0.5f * pow(output[i] - target[i], 2); // MSE
     }
+    return loss;
 }
 
-void MultiLayerPerceptron::testDataset(const std::vector<std::vector<float>>& inputs,
-                                       const std::vector<std::vector<float>>& targets,
-                                       bool showImages) const {
+float MultilayerPerceptron::calculateAccuracy(const vector<vector<float>>& inputs, 
+                                            const vector<vector<float>>& targets) const {
+    if (inputs.size() != targets.size()) {
+        throw runtime_error("Inputs and targets must have the same size");
+    }
+
     int correct = 0;
-
     for (size_t i = 0; i < inputs.size(); ++i) {
-        const_cast<MultiLayerPerceptron*>(this)->setInput(inputs[i]);
-        auto output = const_cast<MultiLayerPerceptron*>(this)->forward();
-
-        int pred = std::max_element(output.begin(), output.end()) - output.begin();
-        int real = std::max_element(targets[i].begin(), targets[i].end()) - targets[i].begin();
-
-        if (showImages) {
-            std::cout << "Imagen #" << i + 1 << "\n";
-            mostrarImagenConsola(inputs[i]);
-            std::cout << "Etiqueta real: " << real << " | Predicción: " << pred << "\n\n";
-        }
-
-        if (pred == real) ++correct;
+        setInput(inputs[i]);
+        auto output = forwardPropagate();
+        
+        int predicted = distance(output.begin(), max_element(output.begin(), output.end()));
+        int actual = distance(targets[i].begin(), max_element(targets[i].begin(), targets[i].end()));
+        
+        if (predicted == actual) correct++;
     }
 
-    std::cout << "Precisión total: " << (correct * 100.0 / inputs.size()) << "%\n";
+    return static_cast<float>(correct) / inputs.size() * 100.0f;
 }
 
+void MultilayerPerceptron::saveModel(const string& filename) const {
+    ofstream file(filename, ios::binary);
+    if (!file) {
+        throw runtime_error("Cannot open file for writing: " + filename);
+    }
 
+    // Guardar arquitectura
+    vector<int> architecture;
+    for (size_t i = 0; i < layers.size(); ++i) {
+        int neurons = layers[i]->size();
+        if (i != layers.size()-1) neurons--; // Excluir bias
+        architecture.push_back(neurons);
+    }
+    
+    size_t num_layers = architecture.size();
+    file.write(reinterpret_cast<const char*>(&num_layers), sizeof(size_t));
+    file.write(reinterpret_cast<const char*>(architecture.data()), num_layers * sizeof(int));
+
+    // Guardar pesos
+    for (size_t i = 1; i < layers.size(); ++i) {
+        layers[i]->saveWeights(file);
+    }
+}
+
+void MultilayerPerceptron::loadModel(const string& filename) {
+    ifstream file(filename, ios::binary);
+    if (!file) {
+        throw runtime_error("Cannot open file for reading: " + filename);
+    }
+
+    // Leer arquitectura
+    size_t num_layers;
+    file.read(reinterpret_cast<char*>(&num_layers), sizeof(size_t));
+    
+    vector<int> architecture(num_layers);
+    file.read(reinterpret_cast<char*>(architecture.data()), num_layers * sizeof(int));
+
+    // Recrear la red
+    vector<ActivationFunction> activations(num_layers - 1, Activations::Sigmoid());
+    if (num_layers > 1) activations.back() = Activations::Softmax();
+    
+    createNetwork(architecture, activations);
+
+    // Cargar pesos
+    for (size_t i = 1; i < layers.size(); ++i) {
+        layers[i]->loadWeights(file);
+    }
+}
+
+void MultilayerPerceptron::printNetwork() const {
+    for (size_t i = 0; i < layers.size(); ++i) {
+        cout << "Layer " << i << " (";
+        if (i == 0) cout << "Input";
+        else if (i == layers.size()-1) cout << (softmax_output ? "Softmax" : "Output");
+        else cout << "Hidden";
+        cout << "):\n";
+        
+        for (size_t j = 0; j < layers[i]->size(); ++j) {
+            const Neuron* neuron = (*layers[i])[j];
+            cout << "  Output: " << neuron->output << ", Delta: " << neuron->delta;
+            if (neuron->is_bias) cout << " [bias]";
+            cout << endl;
+        }
+    }
+}

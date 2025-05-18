@@ -1,127 +1,43 @@
 #include "neuron.hpp"
-#include "ActivationFunction.hpp"
+#include "Activations.hpp"
 #include <cmath>
-#include <Activations.hpp>
 
 
+// -------------------- Neurona --------------------
+Neuron::Neuron(ActivationFunction act) : activation(act) {}
 
-Neuron::Neuron(bool bias, bool isOut, ActivationFunction act, float lr)
-    : isBias(bias), isOutput(isOut), activation(act), learningRate(lr) {
-    if (isBias) output = 1.0f;
-}
-
-void Neuron::forward() {
-    if (isBias) {
+void Neuron::computeOutput() {
+    if (is_bias) {
         output = 1.0f;
         return;
     }
-    float sum = 0.0f;
-    // weigth and pointer to prev
-    for (auto& set : prev) {
-        sum += *(set.second) * set.first->output;
+    
+    net_input = 0.0f;
+    for (const auto& [neuron, weight] : inputs) {
+        net_input += *weight * neuron->output;
     }
-    net = sum;
-
-    if (activation.activar)
-        output = activation.activar(sum);
-    else
-        output = sum;
+    
+    if (activation.activate) {
+        output = activation.activate(net_input);
+    }
 }
 
-void Neuron::computeOutputDelta(float target) {
-    if (activation.derivar)
-        delta = (output - target) * activation.derivar(output);
-}
-
-void Neuron::computeHiddenDelta() {
-    float sum = 0.0f;
-    for (auto& n : next) {
-        sum += *(n.second) * n.first->delta;
+void Neuron::computeDelta(bool is_output_neuron, float target) {
+    if (is_output_neuron) {
+        delta = (output - target); // Para softmax, la derivada ya está considerada
+    } else {
+        float sum = 0.0f;
+        for (const auto& [neuron, weight] : outputs) {
+            sum += *weight * neuron->delta;
+        }
+        delta = activation.derive(output) * sum;
     }
-    if (activation.derivar)
-        delta = activation.derivar(output) * sum;
 }
 
 void Neuron::updateWeights() {
-    if (isBias) return;
-    for (auto& input : prev) {
-        *(input.second) -= learningRate * delta * input.first->output;
+    if (is_bias) return;
+    for (auto& [neuron, weight] : inputs) {
+        *weight -= LEARNING_RATE * delta * neuron->output;
     }
 }
 
-void Neuron::setPrev(Neuron* from, float* weight) {
-    prev.push_back({from, weight});
-}
-
-void Neuron::setNext(Neuron* to, float* weight) {
-    next.push_back({to, weight});
-}
-
-void Neuron::setActivation(const ActivationFunction& act) {
-    activation = act;
-}
-
-float Neuron::getOutput() const {
-    return output;
-}
-
-float Neuron::getDelta() const {
-    return delta;
-}
-
-float Neuron::getNet() const {
-    return net;
-}
-
-bool Neuron::getIsBias() const {
-    return isBias;
-}
-
-void Neuron::setIsBias(bool value) {
-    isBias = value;
-}
-
-bool Neuron::getIsOutput() const {
-    return isOutput;
-}
-
-void Neuron::setIsOutput(bool value) {
-    isOutput = value;
-}
-
-
-
-// Getters
-const std::vector<std::pair<Neuron*, float*>>& Neuron::getNext() const {
-    return next;
-}
-
-const std::vector<std::pair<Neuron*, float*>>& Neuron::getPrev() const {
-    return prev;
-}
-
-ActivationFunction Neuron::getActivation() const {
-    return activation;
-}
-
-float Neuron::getLearningRate() const {
-    return learningRate;
-}
-
-// Setters
-void Neuron::setOutput(float val) {
-    output = val;
-}
-
-void Neuron::setNet(float val) {
-    net = val;
-}
-
-void Neuron::setDelta(float val) {
-    delta = val;
-}
-
-
-void Neuron::setLearningRate(float rate) {
-    learningRate = rate;
-}

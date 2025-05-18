@@ -1,50 +1,32 @@
-#pragma once
+#include <iostream>
 #include <vector>
-#include <utility>
-#include "ActivationFunction.hpp"
+#include <cmath>
+#include <cstdlib>
+#include <ctime>
+#include <numeric>
+#include <algorithm>
+#include <fstream>
+#include <filesystem>
+#include <iomanip>
+#include <Activations.hpp>
 
-class Neuron {
-private:
-    float output = 0.0f, net = 0.0f, delta = 0.0f;
-    bool isBias = false, isOutput = false;
+#define LEARNING_RATE 0.1f
+#define RANDOM_SEED 42
 
-    std::vector<std::pair<Neuron*, float*>> next, prev;
+using namespace std;
+namespace fs = std::filesystem;
+
+struct Neuron {
+    float output = 0.0f;
+    float net_input = 0.0f;
+    float delta = 0.0f;
+    bool is_bias = false;
+    vector<pair<Neuron*, float*>> inputs;
+    vector<pair<Neuron*, float*>> outputs;
     ActivationFunction activation;
-    float learningRate = 0.1f;  // Ahora es miembro no estático
 
-public:
-  
-    Neuron(bool bias = false, bool isOutput = false,
-           ActivationFunction act = ActivationFunction(nullptr, nullptr),
-           float lr = 0.1f);
-
-    void forward();
-    void computeOutputDelta(float target);
-    void computeHiddenDelta();
+    Neuron(ActivationFunction act = Activations::Sigmoid());
+    void computeOutput();
+    void computeDelta(bool is_output_neuron, float target = 0.0f);
     void updateWeights();
-
-    void setPrev(Neuron* from, float* weight);
-    void setNext(Neuron* to, float* weight);
-
-    // Getters
-    float getOutput() const;
-    float getNet() const;
-    float getDelta() const;
-    bool getIsBias() const;
-    bool getIsOutput() const;
-    const std::vector<std::pair<Neuron*, float*>>& getNext() const;
-    const std::vector<std::pair<Neuron*, float*>>& getPrev() const;
-    ActivationFunction getActivation() const;
-    float getLearningRate() const;
-
-    // Setters
-    void setOutput(float val);
-    void setNet(float val);
-    void setDelta(float val);
-    void setIsBias(bool val);
-    void setIsOutput(bool val);
-   
-    void setActivation(const ActivationFunction& act);
-    void setLearningRate(float rate);
-
 };

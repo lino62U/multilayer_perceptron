@@ -13,6 +13,7 @@ set(SOURCES
     src/perceptron.cpp
     src/layers.cpp
     src/neuron.cpp
+    src/MNISTDataset.cpp
 )
 
 # Ejecutable principal

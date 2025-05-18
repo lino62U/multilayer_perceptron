@@ -5,11 +5,15 @@
 #include <ctime>
 #include <numeric>
 #include <algorithm>
+#include <fstream>
+#include <filesystem>
+#include <iomanip>
 
 #define LEARNING_RATE 0.1f
 #define RANDOM_SEED 42
 
 using namespace std;
+namespace fs = std::filesystem;
 
 // ==================== DECLARACIONES ====================
 using ActivationFunc = float(*)(float);
@@ -78,6 +82,10 @@ public:
     size_t size() const { return neurons.size(); }
     Neuron* operator[](size_t index) { return neurons[index]; }
     const Neuron* operator[](size_t index) const { return neurons[index]; }
+
+    // Nuevas funciones para guardar/cargar pesos
+    void saveWeights(ofstream& file) const;
+    void loadWeights(ifstream& file);
 };
 
 class MultilayerPerceptron {
@@ -88,11 +96,73 @@ public:
     ~MultilayerPerceptron();
     void createNetwork(const vector<int>& architecture, 
                       const vector<ActivationFunction>& activations);
-    void setInput(const vector<float>& inputs);
-    vector<float> forwardPropagate();
+    void setInput(const vector<float>& inputs) const;
+    vector<float> forwardPropagate() const;
     void backPropagate(const vector<float>& targets);
     void train(const vector<float>& input, const vector<float>& target);
+    
+    // Nuevas funciones de entrenamiento y evaluación
+    void trainDataset(const vector<vector<float>>& inputs, 
+                     const vector<vector<float>>& targets, 
+                     int epochs, int batch_size = 1);
+    float calculateLoss(const vector<float>& output, const vector<float>& target) const;
+    float calculateAccuracy(const vector<vector<float>>& inputs, 
+                          const vector<vector<float>>& targets) const;
+    
+    // Funciones para guardar/cargar modelo
+    void saveModel(const string& filename) const;
+    void loadModel(const string& filename);
+    
     void printNetwork() const;
+
+     void testModel(const vector<vector<float>>& test_images, 
+                  const vector<vector<float>>& test_labels,
+                  bool show_details = false) const {
+        if (test_images.size() != test_labels.size()) {
+            throw runtime_error("Test images and labels must have the same size");
+        }
+
+        int correct = 0;
+        for (size_t i = 0; i < test_images.size(); ++i) {
+            setInput(test_images[i]);
+            auto output = forwardPropagate();
+
+            int predicted = distance(output.begin(), max_element(output.begin(), output.end()));
+            int actual = distance(test_labels[i].begin(), max_element(test_labels[i].begin(), test_labels[i].end()));
+
+            if (show_details) {
+                cout << "Test Sample #" << i + 1 << "\n";
+                displayImage(test_images[i]);
+                cout << "Actual: " << actual << " | Predicted: " << predicted << "\n\n";
+            }
+
+            if (predicted == actual) correct++;
+        }
+
+        float accuracy = static_cast<float>(correct) / test_images.size() * 100.0f;
+        cout << "Test Accuracy: " << accuracy << "% (" << correct << "/" << test_images.size() << ")\n";
+    }
+
+    static void displayImage(const vector<float>& image, int rows = 28, int cols = 28) {
+        const string shades = " .:-=+*#%@";
+        
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                float pixel = image[i * cols + j];
+                int level = static_cast<int>(pixel * (shades.size() - 1));
+                cout << shades[level] << shades[level];
+            }
+            cout << endl;
+        }
+    }
+};
+
+// Clase para manejar datos MNIST
+class MNISTDataset {
+public:
+    static vector<vector<float>> loadImages(const string& filename, int max_images = -1);
+    static vector<vector<float>> loadLabels(const string& filename, int max_labels = -1);
+    static void displayImage(const vector<float>& image, int rows = 28, int cols = 28);
 };
 
 // ==================== IMPLEMENTACIONES ====================
@@ -298,6 +368,24 @@ void Layer::setAsOutputLayer(bool softmax) {
     softmax_enabled = softmax;
 }
 
+void Layer::saveWeights(ofstream& file) const {
+    for (auto& neuron : neurons) {
+        if (neuron->is_bias) continue;
+        for (auto& [_, weight] : neuron->inputs) {
+            file.write(reinterpret_cast<const char*>(weight), sizeof(float));
+        }
+    }
+}
+
+void Layer::loadWeights(ifstream& file) {
+    for (auto& neuron : neurons) {
+        if (neuron->is_bias) continue;
+        for (auto& [_, weight] : neuron->inputs) {
+            file.read(reinterpret_cast<char*>(weight), sizeof(float));
+        }
+    }
+}
+
 // -------------------- Perceptrón Multicapa --------------------
 MultilayerPerceptron::~MultilayerPerceptron() {
     for (auto& layer : layers) {
@@ -331,11 +419,11 @@ void MultilayerPerceptron::createNetwork(const vector<int>& architecture,
     }
 }
 
-void MultilayerPerceptron::setInput(const vector<float>& inputs) {
+void MultilayerPerceptron::setInput(const vector<float>& inputs) const{
     layers[0]->setInputs(inputs);
 }
 
-vector<float> MultilayerPerceptron::forwardPropagate() {
+vector<float> MultilayerPerceptron::forwardPropagate() const{
     for (size_t i = 1; i < layers.size(); ++i) {
         layers[i]->computeOutputs();
         if (i == layers.size()-1 && softmax_output) {
@@ -366,6 +454,118 @@ void MultilayerPerceptron::train(const vector<float>& input, const vector<float>
     backPropagate(target);
 }
 
+void MultilayerPerceptron::trainDataset(const vector<vector<float>>& inputs, 
+                                       const vector<vector<float>>& targets, 
+                                       int epochs, int batch_size) {
+    if (inputs.size() != targets.size()) {
+        throw runtime_error("Inputs and targets must have the same size");
+    }
+
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        float total_loss = 0.0f;
+        int correct = 0;
+
+        for (size_t i = 0; i < inputs.size(); ++i) {
+            setInput(inputs[i]);
+            auto output = forwardPropagate();
+            backPropagate(targets[i]);
+
+            // Calcular pérdida y precisión
+            total_loss += calculateLoss(output, targets[i]);
+            
+            // Para precisión
+            int predicted = distance(output.begin(), max_element(output.begin(), output.end()));
+            int actual = distance(targets[i].begin(), max_element(targets[i].begin(), targets[i].end()));
+            if (predicted == actual) correct++;
+        }
+
+        // Mostrar estadísticas de la época
+        float avg_loss = total_loss / inputs.size();
+        float accuracy = static_cast<float>(correct) / inputs.size() * 100.0f;
+
+        cout << "Epoch " << epoch + 1 << "/" << epochs 
+             << " - Loss: " << avg_loss 
+             << " - Accuracy: " << accuracy << "%" << endl;
+    }
+}
+
+float MultilayerPerceptron::calculateLoss(const vector<float>& output, const vector<float>& target) const {
+    float loss = 0.0f;
+    for (size_t i = 0; i < output.size(); ++i) {
+        loss += 0.5f * pow(output[i] - target[i], 2); // MSE
+    }
+    return loss;
+}
+
+float MultilayerPerceptron::calculateAccuracy(const vector<vector<float>>& inputs, 
+                                            const vector<vector<float>>& targets) const {
+    if (inputs.size() != targets.size()) {
+        throw runtime_error("Inputs and targets must have the same size");
+    }
+
+    int correct = 0;
+    for (size_t i = 0; i < inputs.size(); ++i) {
+        setInput(inputs[i]);
+        auto output = forwardPropagate();
+        
+        int predicted = distance(output.begin(), max_element(output.begin(), output.end()));
+        int actual = distance(targets[i].begin(), max_element(targets[i].begin(), targets[i].end()));
+        
+        if (predicted == actual) correct++;
+    }
+
+    return static_cast<float>(correct) / inputs.size() * 100.0f;
+}
+
+void MultilayerPerceptron::saveModel(const string& filename) const {
+    ofstream file(filename, ios::binary);
+    if (!file) {
+        throw runtime_error("Cannot open file for writing: " + filename);
+    }
+
+    // Guardar arquitectura
+    vector<int> architecture;
+    for (size_t i = 0; i < layers.size(); ++i) {
+        int neurons = layers[i]->size();
+        if (i != layers.size()-1) neurons--; // Excluir bias
+        architecture.push_back(neurons);
+    }
+    
+    size_t num_layers = architecture.size();
+    file.write(reinterpret_cast<const char*>(&num_layers), sizeof(size_t));
+    file.write(reinterpret_cast<const char*>(architecture.data()), num_layers * sizeof(int));
+
+    // Guardar pesos
+    for (size_t i = 1; i < layers.size(); ++i) {
+        layers[i]->saveWeights(file);
+    }
+}
+
+void MultilayerPerceptron::loadModel(const string& filename) {
+    ifstream file(filename, ios::binary);
+    if (!file) {
+        throw runtime_error("Cannot open file for reading: " + filename);
+    }
+
+    // Leer arquitectura
+    size_t num_layers;
+    file.read(reinterpret_cast<char*>(&num_layers), sizeof(size_t));
+    
+    vector<int> architecture(num_layers);
+    file.read(reinterpret_cast<char*>(architecture.data()), num_layers * sizeof(int));
+
+    // Recrear la red
+    vector<ActivationFunction> activations(num_layers - 1, Activations::Sigmoid());
+    if (num_layers > 1) activations.back() = Activations::Softmax();
+    
+    createNetwork(architecture, activations);
+
+    // Cargar pesos
+    for (size_t i = 1; i < layers.size(); ++i) {
+        layers[i]->loadWeights(file);
+    }
+}
+
 void MultilayerPerceptron::printNetwork() const {
     for (size_t i = 0; i < layers.size(); ++i) {
         cout << "Layer " << i << " (";
@@ -383,54 +583,154 @@ void MultilayerPerceptron::printNetwork() const {
     }
 }
 
-// ==================== MAIN ====================
-int main() {
-    MultilayerPerceptron mlp;
+// -------------------- MNIST Dataset --------------------
+vector<vector<float>> MNISTDataset::loadImages(const string& filename, int max_images) {
+    ifstream file(filename, ios::binary);
+    if (!file) throw runtime_error("Cannot open MNIST images file: " + filename);
+
+    // Leer cabecera
+    int32_t magic, num_images, rows, cols;
+    file.read(reinterpret_cast<char*>(&magic), 4);
+    file.read(reinterpret_cast<char*>(&num_images), 4);
+    file.read(reinterpret_cast<char*>(&rows), 4);
+    file.read(reinterpret_cast<char*>(&cols), 4);
+
+    // Convertir de big-endian a little-endian
+    magic = __builtin_bswap32(magic);
+    num_images = __builtin_bswap32(num_images);
+    rows = __builtin_bswap32(rows);
+    cols = __builtin_bswap32(cols);
+
+    if (max_images > 0 && max_images < num_images) {
+        num_images = max_images;
+    }
+
+    vector<vector<float>> images;
+    images.reserve(num_images);
+
+    for (int i = 0; i < num_images; ++i) {
+        vector<float> image(rows * cols);
+        for (int j = 0; j < rows * cols; ++j) {
+            uint8_t pixel;
+            file.read(reinterpret_cast<char*>(&pixel), 1);
+            image[j] = pixel / 255.0f; // Normalizar a [0,1]
+        }
+        images.push_back(move(image));
+    }
+
+    return images;
+}
+
+vector<vector<float>> MNISTDataset::loadLabels(const string& filename, int max_labels) {
+    ifstream file(filename, ios::binary);
+    if (!file) throw runtime_error("Cannot open MNIST labels file: " + filename);
+
+    // Leer cabecera
+    int32_t magic, num_labels;
+    file.read(reinterpret_cast<char*>(&magic), 4);
+    file.read(reinterpret_cast<char*>(&num_labels), 4);
+
+    // Convertir de big-endian a little-endian
+    magic = __builtin_bswap32(magic);
+    num_labels = __builtin_bswap32(num_labels);
+
+    if (max_labels > 0 && max_labels < num_labels) {
+        num_labels = max_labels;
+    }
+
+    vector<vector<float>> labels;
+    labels.reserve(num_labels);
+
+    for (int i = 0; i < num_labels; ++i) {
+        uint8_t label;
+        file.read(reinterpret_cast<char*>(&label), 1);
+        
+        vector<float> one_hot(10, 0.0f);
+        one_hot[label] = 1.0f;
+        labels.push_back(move(one_hot));
+    }
+
+    return labels;
+}
+
+void MNISTDataset::displayImage(const vector<float>& image, int rows, int cols) {
+    const string shades = " .:-=+*#%@";
     
-    // Ejemplo XOR con sigmoid (salida única)
-    cout << "XOR with Sigmoid/Tanh (single output):\n";
-    mlp.createNetwork({2, 2, 1}, {Activations::Sigmoid(), Activations::Sigmoid()});
-
-    vector<vector<float>> training_inputs = {{0,0}, {0,1}, {1,0}, {1,1}};
-    vector<vector<float>> training_targets = {{0}, {1}, {1}, {0}};
-
-    // Entrenamiento
-    for (int epoch = 0; epoch < 3000; ++epoch) {
-        for (size_t i = 0; i < training_inputs.size(); ++i) {
-            mlp.train(training_inputs[i], training_targets[i]);
-        }
-    }
-
-    cout << "\nXOR Results:\n";
-    for (const auto& input : training_inputs) {
-        mlp.setInput(input);
-        auto output = mlp.forwardPropagate();
-        cout << input[0] << " XOR " << input[1] << " = " << output[0] << endl;
-    }
-
-    // Ejemplo multiclase con softmax
-    cout << "\nMulticlass example with Softmax:\n";
-    MultilayerPerceptron mlp_softmax;
-    mlp_softmax.createNetwork({2, 4, 3}, {Activations::ReLU(), Activations::Softmax()});
-
-    vector<vector<float>> mc_inputs = {{0,0}, {0,1}, {1,0}, {1,1}};
-    vector<vector<float>> mc_targets = {{1,0,0}, {0,1,0}, {0,0,1}, {0,1,0}};
-
-    for (int epoch = 0; epoch < 5000; ++epoch) {
-        for (size_t i = 0; i < mc_inputs.size(); ++i) {
-            mlp_softmax.train(mc_inputs[i], mc_targets[i]);
-        }
-    }
-
-    cout << "\nMulticlass Results:\n";
-    for (const auto& input : mc_inputs) {
-        mlp_softmax.setInput(input);
-        auto output = mlp_softmax.forwardPropagate();
-        cout << input[0] << "," << input[1] << " => ";
-        for (auto val : output) {
-            cout << val << " ";
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            float pixel = image[i * cols + j];
+            int level = static_cast<int>(pixel * (shades.size() - 1));
+            cout << shades[level] << shades[level];
         }
         cout << endl;
+    }
+}
+
+// ==================== EJEMPLOS DE USO ====================
+int main() {
+    // Ejemplo XOR
+    cout << "Entrenando red XOR...\n";
+    MultilayerPerceptron mlp;
+    mlp.createNetwork({2, 2, 1}, {Activations::Sigmoid(), Activations::Sigmoid()});
+
+    vector<vector<float>> xor_inputs = {{0,0}, {0,1}, {1,0}, {1,1}};
+    vector<vector<float>> xor_targets = {{0}, {1}, {1}, {0}};
+
+    mlp.trainDataset(xor_inputs, xor_targets, 5000);
+
+    cout << "\nResultados XOR:\n";
+    for (size_t i = 0; i < xor_inputs.size(); ++i) {
+        mlp.setInput(xor_inputs[i]);
+        auto output = mlp.forwardPropagate();
+        cout << xor_inputs[i][0] << " XOR " << xor_inputs[i][1] << " = " << output[0] << endl;
+    }
+
+    // Ejemplo MNIST (reducido para demostración)
+    cout << "\nCargando MNIST reducido...\n";
+    try {
+        auto train_images = MNISTDataset::loadImages("dataset/mnist/train-images.idx3-ubyte", 1000);
+        auto train_labels = MNISTDataset::loadLabels("dataset/mnist/train-labels.idx1-ubyte", 1000);
+        auto test_images = MNISTDataset::loadImages("dataset/mnist/t10k-images.idx3-ubyte", 10);
+        auto test_labels = MNISTDataset::loadLabels("dataset/mnist/t10k-labels.idx1-ubyte", 10);
+
+        cout << "\nMostrando primera imagen de entrenamiento:\n";
+        MNISTDataset::displayImage(train_images[0]);
+        cout << "Etiqueta: ";
+        for (auto val : train_labels[0]) cout << val << " ";
+        cout << endl;
+
+        MultilayerPerceptron mnist_mlp;
+        mnist_mlp.createNetwork({784, 128, 10}, {Activations::ReLU(), Activations::Softmax()});
+
+        cout << "\nEntrenando red MNIST...\n";
+        mnist_mlp.trainDataset(train_images, train_labels, 20);
+
+        cout << "\nProbando red MNIST...\n";
+        float accuracy = mnist_mlp.calculateAccuracy(test_images, test_labels);
+        cout << "Precisión en test: " << accuracy << "%" << endl;
+
+          cout << "TESTING IMAGES  " << endl;
+
+        mnist_mlp.testModel(test_images, test_labels, true);
+
+
+
+
+
+        // Guardar y cargar modelo
+        cout << "\nGuardando modelo...\n";
+        mnist_mlp.saveModel("mnist_model.bin");
+
+        cout << "Cargando modelo...\n";
+        MultilayerPerceptron loaded_mlp;
+        loaded_mlp.loadModel("mnist_model.bin");
+
+        cout << "Precisión del modelo cargado: " 
+             << loaded_mlp.calculateAccuracy(test_images, test_labels) << "%" << endl;
+
+    } catch (const exception& e) {
+        cerr << "Error con MNIST: " << e.what() << endl;
+        cerr << "Asegúrate de tener los archivos MNIST en el directorio actual." << endl;
     }
 
     return 0;
