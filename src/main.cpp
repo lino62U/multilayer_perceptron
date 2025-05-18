@@ -87,7 +87,23 @@ int main(int argc, char* argv[]) {
     if (argc > 2) estructuraRed = parseEstructuraRed(argv[2]);
     if (argc > 3) epocas = stoi(argv[3]);
 
-    MultiLayerPerceptron red( estructuraRed, Activations::Sigmoid(), 0.1f  );
+    MultiLayerPerceptron red( estructuraRed, Activations::Sigmoid(), 0.01f  );
+
+
+    // Datos de entrada y salida para la compuerta AND
+    vector<vector<float>> entradas = {
+        {0, 0},
+        {0, 1},
+        {1, 0},
+        {1, 1}
+    };
+
+    vector<vector<float>> salidas = {
+        {0},
+        {1},
+        {1},
+        {0}
+    };
 
     if (fs::exists("../models/" + modelo)) {
         cout << "Cargando modelo desde: models/" << modelo << endl;
@@ -95,17 +111,29 @@ int main(int argc, char* argv[]) {
     } else {
         cout << "Entrenando modelo y guardando en: models/" << modelo << endl;
 
-        const int cantidad = 1000;
-        auto imagenes = leerImagenesMNIST("../dataset/mnist/train-images.idx3-ubyte", cantidad);
-        auto etiquetas = leerEtiquetasMNIST("../dataset/mnist/train-labels.idx1-ubyte", cantidad);
+       // const int cantidad = 1000;
+        //auto imagenes = leerImagenesMNIST("../dataset/mnist/train-images.idx3-ubyte", cantidad);
+        //auto etiquetas = leerEtiquetasMNIST("../dataset/mnist/train-labels.idx1-ubyte", cantidad);
+        
+        
 
-        red.trainDataset(imagenes, etiquetas, epocas);
+        red.trainDataset(entradas, salidas, epocas);
         red.saveWeights("../models/" + modelo);
     }
 
-    auto imagenes_test = leerImagenesMNIST("../dataset/mnist/t10k-images.idx3-ubyte", 10);
-    auto etiquetas_test = leerEtiquetasMNIST("../dataset/mnist/t10k-labels.idx1-ubyte", 10);
-    red.testDataset(imagenes_test, etiquetas_test);
+    //auto imagenes_test = leerImagenesMNIST("../dataset/mnist/t10k-images.idx3-ubyte", 10);
+    //auto etiquetas_test = leerEtiquetasMNIST("../dataset/mnist/t10k-labels.idx1-ubyte", 10);
+    //red.testDataset(imagenes_test, etiquetas_test);
+
+    cout << "\nPesos aprendidos por el clasificador lineal:\n";
+    red.printNetwork();
+
+    cout << "\nResultados del clasificador:\n";
+    for (int i = 0; i < entradas.size(); ++i) {
+        red.setInput(entradas[i]);
+        std::vector<float> salida = red.forward();
+        cout << entradas[i][0] << " AND " << entradas[i][1] << " = " << salida[0] << endl;
+    }
     
     return 0;
 }
