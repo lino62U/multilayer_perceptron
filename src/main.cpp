@@ -208,8 +208,8 @@ int main(int argc, char* argv[]) {
             cout << "\n--- Cargando dataset MNIST ---\n";
             auto train_images = MNISTDataset::loadImages("dataset/mnist/train-images.idx3-ubyte", 1000);
             auto train_labels = MNISTDataset::loadLabels("dataset/mnist/train-labels.idx1-ubyte", 1000);
-            auto test_images = MNISTDataset::loadImages("dataset/mnist/t10k-images.idx3-ubyte", 100);
-            auto test_labels = MNISTDataset::loadLabels("dataset/mnist/t10k-labels.idx1-ubyte", 100);
+            auto test_images = MNISTDataset::loadImages("dataset/mnist/t10k-images.idx3-ubyte", 10);
+            auto test_labels = MNISTDataset::loadLabels("dataset/mnist/t10k-labels.idx1-ubyte", 10);
 
             cout << "\n--- Entrenando red MNIST ---\n";
             mlp.trainDataset(train_images, train_labels, epocas);
@@ -232,9 +232,9 @@ int main(int argc, char* argv[]) {
 
     } catch (const exception& e) {
         cerr << "\n[ERROR] " << e.what() << "\n";
-        cerr << "Uso: " << argv[0] << " <modelo.bin> <dataset> [\"<estructura\"] [\"<activaciones\"] [epocas]\n";
-        cerr << "Ejemplo: " << argv[0] << " modelo.bin xor \"2,2,1\" \"sigmoid,sigmoid\" 5000\n";
-        cerr << "         " << argv[0] << " modelo.bin mnist \"784,128,64,10\" \"relu,relu,softmax\" 20\n";
+        cerr << "Uso: ./run.sh <modelo.bin> <dataset> [\"<estructura\"] [\"<activaciones\"] [epocas]\n";
+        cerr << "Ejemplo: ./run.sh modelo.bin xor \"2,2,1\" \"sigmoid,sigmoid\" 5000\n";
+        cerr << "         ./run.sh modelo.bin mnist \"784,128,64,10\" \"relu,relu,softmax\" 20\n";
         return 1;
     }
 
