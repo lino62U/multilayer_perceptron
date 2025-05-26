@@ -3,13 +3,21 @@
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
-#include <fstream>  // Para leer el archivo
-#include <algorithm>  // Necessário para max_element
+#include <fstream>
+#include <algorithm>
+#include <numeric>  // Para std::accumulate en softmax
 
 #define LEARNING_RATE 0.1f
-#define RANDOM_SEED 42  // Semilla fija
+#define RANDOM_SEED 42
 
 using namespace std;
+
+enum FuncionActivacion {
+    SIGMOIDE,
+    RELU,
+    TANH,
+    SOFTMAX
+};
 
 struct Neurona {
     float salida = 0.0f;
@@ -17,20 +25,24 @@ struct Neurona {
     float delta = 0.0f;
     bool esBias = false;
     bool esSalida = false;
+    FuncionActivacion activacion = SIGMOIDE;  // Por defecto sigmoide
 
     vector<pair<Neurona*, float*>> entradas;
     vector<pair<Neurona*, float*>> salidas;
 
-    float funcion_activacion(float x) {
-        return 1.0f / (1.0f + exp(-x));  // Sigmoide
+    // Funciones de activación
+    float sigmoide(float x) {
+        return 1.0f / (1.0f + exp(-x));
     }
-    float derivada_activacion(float y) {
-        return y * (1.0f - y);  // Derivada de la sigmoide
+
+    float derivada_sigmoide(float y) {
+        return y * (1.0f - y);
     }
 
     float relu(float x) {
         return x > 0 ? x : 0.0f;
     }
+
     float derivada_relu(float x) {
         return x > 0 ? 1.0f : 0.0f;
     }
@@ -40,14 +52,27 @@ struct Neurona {
     }
 
     float derivada_tanh(float y) {
-        // y = tanh(x), por eso usamos 1 - y^2
         return 1.0f - y * y;
     }
 
+    // Softmax se calcula a nivel de capa, no de neurona individual
+    float activar(float x) {
+        switch(activacion) {
+            case SIGMOIDE: return sigmoide(x);
+            case RELU: return relu(x);
+            case TANH: return tanh_act(x);
+            default: return sigmoide(x); // SOFTMAX se maneja aparte
+        }
+    }
 
-
-
-    
+    float derivada(float y) {
+        switch(activacion) {
+            case SIGMOIDE: return derivada_sigmoide(y);
+            case RELU: return derivada_relu(y);
+            case TANH: return derivada_tanh(y);
+            default: return derivada_sigmoide(y); // SOFTMAX se maneja aparte
+        }
+    }
 
     void calcularSalida() {
         if (esBias) {
@@ -60,11 +85,11 @@ struct Neurona {
             suma += *(entrada.second) * entrada.first->salida;
         }
         net = suma;
-        salida = funcion_activacion(suma);
+        salida = activar(suma);
     }
 
     void calcularDeltaSalida(float objetivo) {
-        delta = (salida - objetivo) * derivada_activacion(salida);
+        delta = (salida - objetivo) * derivada(salida);
     }
 
     void calcularDeltaOculta() {
@@ -72,7 +97,7 @@ struct Neurona {
         for (auto& s : salidas) {
             suma += *(s.second) * s.first->delta;
         }
-        delta = derivada_activacion(salida) * suma;
+        delta = derivada(salida) * suma;
     }
 
     void actualizarPesos() {
@@ -85,10 +110,12 @@ struct Neurona {
 
 class PerceptronMulticapa {
     vector<vector<Neurona*>> capas;
+    vector<FuncionActivacion> funcionesActivacion;
 
 public:
-    void crearRed(const vector<int>& estructura) {
-        srand(RANDOM_SEED);  // Semilla fija
+    void crearRed(const vector<int>& estructura, const vector<FuncionActivacion>& funciones) {
+        srand(RANDOM_SEED);
+        funcionesActivacion = funciones;
 
         for (int i = 0; i < estructura.size(); ++i) {
             vector<Neurona*> capa;
@@ -103,6 +130,7 @@ public:
                     n->salida = 1.0f;
                 }
                 n->esSalida = (i == estructura.size() - 1);
+                n->activacion = (i < funciones.size()) ? funciones[i] : SIGMOIDE;
                 capa.push_back(n);
             }
 
@@ -112,13 +140,33 @@ public:
         // Conectar neuronas capa a capa
         for (int i = 1; i < capas.size(); ++i) {
             for (auto& neurona : capas[i]) {
-                if (neurona->esBias) continue;  // El bias no recibe entradas
+                if (neurona->esBias) continue;
                 for (auto& anterior : capas[i - 1]) {
-                    float* peso = new float(((rand() % 100) / 100.0f) - 0.5f); // Peso entre -0.5 y 0.5
+                    float* peso = new float(((rand() % 100) / 100.0f) - 0.5f);
                     neurona->entradas.push_back({anterior, peso});
                     anterior->salidas.push_back({neurona, peso});
                 }
             }
+        }
+    }
+
+    void aplicarSoftmax() {
+        if (funcionesActivacion.back() != SOFTMAX) return;
+        
+        vector<Neurona*>& capaSalida = capas.back();
+        float suma = 0.0f;
+        
+        // Calcular exponenciales y suma
+        for (auto& neurona : capaSalida) {
+            if (neurona->esBias) continue;
+            neurona->salida = exp(neurona->net);
+            suma += neurona->salida;
+        }
+        
+        // Normalizar
+        for (auto& neurona : capaSalida) {
+            if (neurona->esBias) continue;
+            neurona->salida /= suma;
         }
     }
 
@@ -131,22 +179,44 @@ public:
     vector<float> ejecutarRed() {
         for (int i = 1; i < capas.size(); ++i) {
             for (auto& neurona : capas[i]) {
-                neurona->calcularSalida();
+                if (!neurona->esBias) {
+                    neurona->calcularSalida();
+                }
+            }
+            
+            // Aplicar softmax si es la última capa y está configurado
+            if (i == capas.size() - 1 && funcionesActivacion.back() == SOFTMAX) {
+                aplicarSoftmax();
             }
         }
 
         vector<float> salidas;
         for (auto& neurona : capas.back()) {
-            salidas.push_back(neurona->salida);
+            if (!neurona->esBias) {
+                salidas.push_back(neurona->salida);
+            }
         }
         return salidas;
     }
 
     void backpropagation(const vector<float>& objetivos) {
-        for (int i = 0; i < capas.back().size(); ++i) {
-            capas.back()[i]->calcularDeltaSalida(objetivos[i]);
+        // Capa de salida (manejo especial para softmax)
+        if (funcionesActivacion.back() == SOFTMAX) {
+            vector<Neurona*>& capaSalida = capas.back();
+            for (int i = 0; i < capaSalida.size(); ++i) {
+                if (!capaSalida[i]->esBias) {
+                    capaSalida[i]->delta = capaSalida[i]->salida - objetivos[i];
+                }
+            }
+        } else {
+            for (int i = 0; i < capas.back().size(); ++i) {
+                if (!capas.back()[i]->esBias) {
+                    capas.back()[i]->calcularDeltaSalida(objetivos[i]);
+                }
+            }
         }
 
+        // Capas ocultas
         for (int i = capas.size() - 2; i > 0; --i) {
             for (auto& neurona : capas[i]) {
                 if (!neurona->esBias)
@@ -154,6 +224,7 @@ public:
             }
         }
 
+        // Actualizar pesos
         for (int i = 1; i < capas.size(); ++i) {
             for (auto& neurona : capas[i]) {
                 neurona->actualizarPesos();
@@ -171,7 +242,15 @@ public:
 
     void imprimirRed() {
         for (int i = 0; i < capas.size(); ++i) {
-            cout << "Capa " << i << ":\n";
+            cout << "Capa " << i << " (";
+            switch(funcionesActivacion[i]) {
+                case SIGMOIDE: cout << "Sigmoide"; break;
+                case RELU: cout << "ReLU"; break;
+                case TANH: cout << "Tanh"; break;
+                case SOFTMAX: cout << "Softmax"; break;
+            }
+            cout << "):\n";
+            
             for (auto& neurona : capas[i]) {
                 cout << "  Neurona ";
                 if (neurona->esBias) {
@@ -193,28 +272,30 @@ public:
     }
 
     void guardarPesos(const string& archivo) {
-    ofstream f(archivo, ios::binary);
-    for (int i = 1; i < capas.size(); ++i) {
-        for (auto& neurona : capas[i]) {
-            for (auto& entrada : neurona->entradas) {
-                f.write((char*)entrada.second, sizeof(float));
+        ofstream f(archivo, ios::binary);
+        for (int i = 1; i < capas.size(); ++i) {
+            for (auto& neurona : capas[i]) {
+                for (auto& entrada : neurona->entradas) {
+                    f.write((char*)entrada.second, sizeof(float));
+                }
             }
         }
     }
-}
 
-void cargarPesos(const string& archivo) {
-    ifstream f(archivo, ios::binary);
-    for (int i = 1; i < capas.size(); ++i) {
-        for (auto& neurona : capas[i]) {
-            for (auto& entrada : neurona->entradas) {
-                f.read((char*)entrada.second, sizeof(float));
+    void cargarPesos(const string& archivo) {
+        ifstream f(archivo, ios::binary);
+        for (int i = 1; i < capas.size(); ++i) {
+            for (auto& neurona : capas[i]) {
+                for (auto& entrada : neurona->entradas) {
+                    f.read((char*)entrada.second, sizeof(float));
+                }
             }
         }
     }
-}
-
 };
+
+// [Resto del código permanece igual: leerDatos, leerImagenesMNIST, leerEtiquetasMNIST, 
+//  mostrarImagenConsola, calcularLoss, entrenarModelo, probarModelo, parseEstructuraRed]
 
 // Función para leer los datos desde un archivo
 vector<vector<float>> leerDatos(const string& archivo) {
@@ -373,10 +454,14 @@ vector<int> parseEstructuraRed(const string& estructura) {
     return red;
 }
 
+
 int main(int argc, char* argv[]) {
     string modelo = "modelo_mnist.bin";
     vector<int> estructuraRed = {784, 128, 64, 10};
-    //mnist_mlp.createNetwork({784, 128, 10}, {Activations::ReLU(), Activations::Softmax()});
+    
+    // Configuración de funciones de activación por capa
+    vector<FuncionActivacion> funciones = {RELU, RELU, SOFTMAX}; // Capas ocultas: ReLU, Salida: Softmax
+    
     int epocas = 10;
 
     if (argc > 1) {
@@ -391,15 +476,15 @@ int main(int argc, char* argv[]) {
 
     PerceptronMulticapa red;
 
-    if (fs::exists(modelo)) {
+    if (filesystem::exists(modelo)) {
         cout << "Cargando modelo existente desde: " << modelo << endl;
-        red.crearRed(estructuraRed);
+        red.crearRed(estructuraRed, funciones);
         red.cargarPesos(modelo);
     } else {
         cout << "Archivo no encontrado. Entrenando nuevo modelo y guardando en: " << modelo << endl;
-        red.crearRed(estructuraRed);
+        red.crearRed(estructuraRed, funciones);
 
-        const int cantidad = 1000;  // Puedes ajustar esto según necesidad
+        const int cantidad = 1000;
         auto imagenes = leerImagenesMNIST("dataset/mnist/train-images.idx3-ubyte", cantidad);
         auto etiquetas = leerEtiquetasMNIST("dataset/mnist/train-labels.idx1-ubyte", cantidad);
 

@@ -104,7 +104,8 @@ public:
     // Nuevas funciones de entrenamiento y evaluación
     void trainDataset(const vector<vector<float>>& inputs, 
                      const vector<vector<float>>& targets, 
-                     int epochs, int batch_size = 1);
+                     int epochs, int batch_size = 1,
+                     const string& metrics_filename = "training_metrics.csv");
     float calculateLoss(const vector<float>& output, const vector<float>& target) const;
     float calculateAccuracy(const vector<vector<float>>& inputs, 
                           const vector<vector<float>>& targets) const;
@@ -456,9 +457,19 @@ void MultilayerPerceptron::train(const vector<float>& input, const vector<float>
 
 void MultilayerPerceptron::trainDataset(const vector<vector<float>>& inputs, 
                                        const vector<vector<float>>& targets, 
-                                       int epochs, int batch_size) {
+                                       int epochs, int batch_size,
+                                       const string& metrics_filename) {
     if (inputs.size() != targets.size()) {
         throw runtime_error("Inputs and targets must have the same size");
+    }
+
+    // Abrir archivo para guardar las métricas
+    ofstream metrics_file(metrics_filename);
+    if (!metrics_file) {
+        cerr << "Warning: Could not open metrics file for writing. Metrics will not be saved." << endl;
+    } else {
+        // Escribir cabecera del archivo
+        metrics_file << "Epoch\tLoss\tAccuracy(%)\n";
     }
 
     for (int epoch = 0; epoch < epochs; ++epoch) {
@@ -479,16 +490,21 @@ void MultilayerPerceptron::trainDataset(const vector<vector<float>>& inputs,
             if (predicted == actual) correct++;
         }
 
-        // Mostrar estadísticas de la época
+        // Calcular métricas
         float avg_loss = total_loss / inputs.size();
         float accuracy = static_cast<float>(correct) / inputs.size() * 100.0f;
 
+        // Mostrar estadísticas de la época
         cout << "Epoch " << epoch + 1 << "/" << epochs 
              << " - Loss: " << avg_loss 
              << " - Accuracy: " << accuracy << "%" << endl;
+
+        // Guardar métricas en el archivo
+        if (metrics_file) {
+            metrics_file << epoch + 1 << "\t" << avg_loss << "\t" << accuracy << "\n";
+        }
     }
 }
-
 float MultilayerPerceptron::calculateLoss(const vector<float>& output, const vector<float>& target) const {
     float loss = 0.0f;
     for (size_t i = 0; i < output.size(); ++i) {
@@ -668,70 +684,103 @@ void MNISTDataset::displayImage(const vector<float>& image, int rows, int cols) 
 
 // ==================== EJEMPLOS DE USO ====================
 int main() {
-    // Ejemplo XOR
-    cout << "Entrenando red XOR...\n";
-    MultilayerPerceptron mlp;
-    mlp.createNetwork({2, 2, 1}, {Activations::Sigmoid(), Activations::Sigmoid()});
+    // Elegir dataset: MNIST o Fashion-MNIST
+    const string dataset_path = "../dataset/mnist/"; // Cambia a "../dataset/fashion-mnist/" si quieres
+    const string prefix = "mnist"; // Cambia a "fashion" si es Fashion-MNIST
 
-    vector<vector<float>> xor_inputs = {{0,0}, {0,1}, {1,0}, {1,1}};
-    vector<vector<float>> xor_targets = {{0}, {1}, {1}, {0}};
+    const int full_epochs = 30;
+    const int half_epochs = full_epochs / 2;
+    const int double_epochs = full_epochs * 2;
+    const int training_samples = 60000;
+    const int test_samples = 10000;
 
-    mlp.trainDataset(xor_inputs, xor_targets, 5000);
+    // Variables de tiempo
+    chrono::time_point<chrono::system_clock> start, end;
+    chrono::duration<double> total_time, load_time, train_time, test_time;
 
-    cout << "\nResultados XOR:\n";
-    for (size_t i = 0; i < xor_inputs.size(); ++i) {
-        mlp.setInput(xor_inputs[i]);
-        auto output = mlp.forwardPropagate();
-        cout << xor_inputs[i][0] << " XOR " << xor_inputs[i][1] << " = " << output[0] << endl;
-    }
+    start = chrono::system_clock::now();
 
-    // Ejemplo MNIST (reducido para demostración)
-    cout << "\nCargando MNIST reducido...\n";
     try {
-        auto train_images = MNISTDataset::loadImages("dataset/mnist/train-images.idx3-ubyte", 1000);
-        auto train_labels = MNISTDataset::loadLabels("dataset/mnist/train-labels.idx1-ubyte", 1000);
-        auto test_images = MNISTDataset::loadImages("dataset/mnist/t10k-images.idx3-ubyte", 10);
-        auto test_labels = MNISTDataset::loadLabels("dataset/mnist/t10k-labels.idx1-ubyte", 10);
+        cout << "\nCargando " << prefix << "...\n";
+        auto load_start = chrono::system_clock::now();
 
-        cout << "\nMostrando primera imagen de entrenamiento:\n";
-        MNISTDataset::displayImage(train_images[0]);
-        cout << "Etiqueta: ";
-        for (auto val : train_labels[0]) cout << val << " ";
-        cout << endl;
+        auto train_images = MNISTDataset::loadImages(dataset_path + "train-images.idx3-ubyte", training_samples);
+        auto train_labels = MNISTDataset::loadLabels(dataset_path + "train-labels.idx1-ubyte", training_samples);
+        auto test_images = MNISTDataset::loadImages(dataset_path + "t10k-images.idx3-ubyte", test_samples);
+        auto test_labels = MNISTDataset::loadLabels(dataset_path + "t10k-labels.idx1-ubyte", test_samples);
 
-        MultilayerPerceptron mnist_mlp;
-        mnist_mlp.createNetwork({784, 128, 10}, {Activations::ReLU(), Activations::Softmax()});
-
-        cout << "\nEntrenando red MNIST...\n";
-        mnist_mlp.trainDataset(train_images, train_labels, 20);
-
-        cout << "\nProbando red MNIST...\n";
-        float accuracy = mnist_mlp.calculateAccuracy(test_images, test_labels);
-        cout << "Precisión en test: " << accuracy << "%" << endl;
-
-          cout << "TESTING IMAGES  " << endl;
-
-        mnist_mlp.testModel(test_images, test_labels, true);
+        auto load_end = chrono::system_clock::now();
 
 
+        load_time = load_end - load_start;
 
 
+        cout << "Datos cargados:\n";
+        cout << " - Imágenes de entrenamiento: " << train_images.size() << "\n";
+        cout << " - Etiquetas de entrenamiento: " << train_labels.size() << "\n";
+        cout << " - Imágenes de test: " << test_images.size() << "\n";
+        cout << " - Etiquetas de test: " << test_labels.size() << "\n";
 
-        // Guardar y cargar modelo
-        cout << "\nGuardando modelo...\n";
-        mnist_mlp.saveModel("mnist_model.bin");
+        cout << "Datos cargados: " << train_images.size() << " ejemplos.\n";
 
-        cout << "Cargando modelo...\n";
-        MultilayerPerceptron loaded_mlp;
-        loaded_mlp.loadModel("mnist_model.bin");
+        // Crear red neuronal
+        MultilayerPerceptron mlp;
+        mlp.createNetwork({784, 256, 128, 10}, {
+            Activations::Sigmoid(),
+            Activations::Sigmoid(),
+            Activations::Softmax()
+        });
 
-        cout << "Precisión del modelo cargado: " 
-             << loaded_mlp.calculateAccuracy(test_images, test_labels) << "%" << endl;
+        // ===== Entrenamiento completo =====
+        cout << "\nEntrenamiento normal (" << full_epochs << " épocas)...\n";
+        auto train_start = chrono::system_clock::now();
+        mlp.trainDataset(train_images, train_labels, full_epochs,1, prefix + "_train_" + to_string(full_epochs) +"epoch.csv");
+        auto train_end = chrono::system_clock::now();
+        train_time = train_end - train_start;
+
+        cout << "Tiempo total entrenamiento: " << train_time.count() << " segundos\n";
+
+        // Evaluación
+        auto test_start = chrono::system_clock::now();
+        mlp.testModel(test_images, test_labels, false);
+        auto test_end = chrono::system_clock::now();
+        test_time = test_end - test_start;
+
+        // Guardar modelo
+        mlp.saveModel(prefix + "_model_" + to_string(full_epochs) + "epochs.bin");
+
+        // ===== Entrenamiento con mitad de épocas =====
+        cout << "\nEntrenamiento con mitad de épocas (" << half_epochs << ")...\n";
+        MultilayerPerceptron mlp_half;
+        mlp_half.createNetwork({784, 256, 128, 10}, {
+            Activations::Sigmoid(),
+            Activations::Sigmoid(),
+            Activations::Softmax()
+        });
+        mlp_half.trainDataset(train_images, train_labels, half_epochs, 1, prefix + "_train_" + to_string(half_epochs) +"epoch.csv");
+        mlp_half.testModel(test_images, test_labels, false);
+        mlp_half.saveModel(prefix + "_model_" + to_string(half_epochs) + "epochs.bin");
+
+        // ===== Entrenamiento con el doble de épocas =====
+        cout << "\nEntrenamiento con el doble de épocas (" << double_epochs << ")...\n";
+        MultilayerPerceptron mlp_double;
+        mlp_double.createNetwork({784, 256, 128, 10}, {
+            Activations::Sigmoid(),
+            Activations::Sigmoid(),
+            Activations::Softmax()
+        });
+        mlp_double.trainDataset(train_images, train_labels, double_epochs, 1, prefix + "_train_" + to_string(double_epochs) +"epoch.csv");
+        mlp_double.testModel(test_images, test_labels, false);
+        mlp_double.saveModel(prefix + "_model_" + to_string(double_epochs) + "epochs.bin");
 
     } catch (const exception& e) {
-        cerr << "Error con MNIST: " << e.what() << endl;
-        cerr << "Asegúrate de tener los archivos MNIST en el directorio actual." << endl;
+        cerr << "Error: " << e.what() << endl;
+        return 1;
     }
+
+    end = chrono::system_clock::now();
+    total_time = end - start;
+    cout << "\nTotal ejecución: " << total_time.count() << " segundos\n";
 
     return 0;
 }
