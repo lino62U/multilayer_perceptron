@@ -688,7 +688,7 @@ int main() {
     const string dataset_path = "../dataset/mnist/"; // Cambia a "../dataset/fashion-mnist/" si quieres
     const string prefix = "mnist"; // Cambia a "fashion" si es Fashion-MNIST
 
-    const int full_epochs = 30;
+    const int full_epochs = 15  ;
     const int half_epochs = full_epochs / 2;
     const int double_epochs = full_epochs * 2;
     const int training_samples = 60000;
