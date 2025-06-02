@@ -1,56 +1,48 @@
 import os
 import struct
-import numpy as np
-from PIL import Image, ImageOps
+from PIL import Image
 
-def images_and_labels_to_idx(image_folder, image_output, label_output):
-    images = []
-    labels = []
+def convertir_png_a_idx(imagenes_dir, output_images_path, output_labels_path):
+    archivos = sorted([f for f in os.listdir(imagenes_dir) if f.endswith('.png')])
 
-    for filename in sorted(os.listdir(image_folder)):
-        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
-            try:
-                # Obtener la etiqueta desde el nombre del archivo (primer carácter)
-                label = int(filename[0])
-            except ValueError:
-                print(f"[WARN] No se pudo extraer etiqueta de: {filename}")
-                continue
+    if not archivos:
+        raise ValueError("No se encontraron imágenes PNG en la carpeta")
 
-            path = os.path.join(image_folder, filename)
+    imagenes = []
+    etiquetas = []
 
-            # Abrir imagen en escala de grises
-            img = Image.open(path).convert('L')
+    for archivo in archivos:
+        etiqueta = int(archivo.split('_')[0])
+        ruta_imagen = os.path.join(imagenes_dir, archivo)
+        imagen = Image.open(ruta_imagen).convert('L')  # escala de grises
 
-            # Redimensionar a 28x28
-            img = img.resize((28, 28))
+        if imagen.size != (28, 28):
+            imagen = imagen.resize((28, 28))  # redimensiona si es necesario
 
-            # Invertir colores
-            img = ImageOps.invert(img)
+        pixeles = list(imagen.getdata())
+        imagenes.append(pixeles)
+        etiquetas.append(etiqueta)
 
-            # Convertir a array
-            img_array = np.array(img, dtype=np.uint8)
-
-            images.append(img_array)
-            labels.append(label)
-
-    images_np = np.stack(images)
-    labels_np = np.array(labels, dtype=np.uint8)
-
-    num_images = len(images_np)
+    n = len(imagenes)
     rows, cols = 28, 28
 
-    # === Escribir archivo .idx3-ubyte (imágenes)
-    with open(image_output, 'wb') as f:
-        f.write(struct.pack('>IIII', 2051, num_images, rows, cols))
-        f.write(images_np.tobytes())
+    # Escribir archivo de imágenes (idx3-ubyte)
+    with open(output_images_path, 'wb') as f:
+        f.write(struct.pack('>IIII', 0x00000803, n, rows, cols))
+        for img in imagenes:
+            f.write(bytearray(img))
 
-    # === Escribir archivo .idx1-ubyte (etiquetas)
-    with open(label_output, 'wb') as f:
-        f.write(struct.pack('>II', 2049, num_images))
-        f.write(labels_np.tobytes())
+    # Escribir archivo de etiquetas (idx1-ubyte)
+    with open(output_labels_path, 'wb') as f:
+        f.write(struct.pack('>II', 0x00000801, n))
+        f.write(bytearray(etiquetas))
 
-    print(f"[INFO] Guardadas {num_images} imágenes en {image_output}")
-    print(f"[INFO] Guardadas {num_images} etiquetas en {label_output}")
+    print(f"✅ {n} imágenes y etiquetas convertidas correctamente.")
 
-# === USO ===
-images_and_labels_to_idx('../test_img', 'my-images.idx3-ubyte', 'my-labels.idx1-ubyte')
+# Ejemplo de uso:
+convertir_png_a_idx(
+    imagenes_dir='../data/mnist45',
+    output_images_path='train-images.idx3-ubyte',
+    output_labels_path='train-labels.idx1-ubyte'
+)
+

@@ -782,5 +782,27 @@ int main() {
     total_time = end - start;
     cout << "\nTotal ejecución: " << total_time.count() << " segundos\n";
 
+
+
+
+
+
+
+
+    auto test_images2 = MNISTDataset::loadImages("train-images.idx3-ubyte", test_samples);
+    auto test_labels2 = MNISTDataset::loadLabels("train-labels.idx1-ubyte", test_samples);
+
+
+    // Crear red neuronal
+    MultilayerPerceptron mlp;
+    
+    // ===== Entrenamiento completo =====
+    cout << "\nEntrenamiento normal (" << full_epochs << " épocas)...\n";
+    
+    // Guardar modelo
+    mlp.loadModel("mnist_model_30epochs.bin");
+    mlp.testModel(test_images2, test_labels2,true);
+
+
     return 0;
 }
