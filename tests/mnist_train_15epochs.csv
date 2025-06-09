@@ -1,0 +1,90 @@
+❯ ./prueba2
+
+Cargando mnist...
+Datos cargados:
+ - Imágenes de entrenamiento: 60000
+ - Etiquetas de entrenamiento: 60000
+ - Imágenes de test: 10000
+ - Etiquetas de test: 10000
+Datos cargados: 60000 ejemplos.
+
+
+Optmizador Adam
+Entrenamiento normal (20 épocas)...
+Epoch 1/20 - Loss: 0.0824196 - Accuracy: 89.1167%
+Epoch 2/20 - Loss: 0.0499391 - Accuracy: 93.31%
+Epoch 3/20 - Loss: 0.039655 - Accuracy: 94.6917%
+Epoch 4/20 - Loss: 0.0338066 - Accuracy: 95.4267%
+Epoch 5/20 - Loss: 0.029446 - Accuracy: 96.0833%
+Epoch 6/20 - Loss: 0.0259354 - Accuracy: 96.5433%
+Epoch 7/20 - Loss: 0.0237624 - Accuracy: 96.8733%
+Epoch 8/20 - Loss: 0.0216721 - Accuracy: 97.1983%
+Epoch 9/20 - Loss: 0.0202839 - Accuracy: 97.3583%
+Epoch 10/20 - Loss: 0.0189245 - Accuracy: 97.535%
+Epoch 11/20 - Loss: 0.0176338 - Accuracy: 97.7317%
+Epoch 12/20 - Loss: 0.0167663 - Accuracy: 97.825%
+Epoch 13/20 - Loss: 0.0163101 - Accuracy: 97.8633%
+Epoch 14/20 - Loss: 0.0157142 - Accuracy: 97.9433%
+Epoch 15/20 - Loss: 0.015121 - Accuracy: 97.99%
+Epoch 16/20 - Loss: 0.0142261 - Accuracy: 98.14%
+Epoch 17/20 - Loss: 0.0137646 - Accuracy: 98.155%
+Epoch 18/20 - Loss: 0.0129176 - Accuracy: 98.2967%
+Epoch 19/20 - Loss: 0.0126298 - Accuracy: 98.35%
+Epoch 20/20 - Loss: 0.0114338 - Accuracy: 98.5417%
+Tiempo total entrenamiento: 7208.57 segundos
+Test Accuracy: 94.17% (9417/10000)
+
+Optmizador RMSProp
+Entrenamiento normal (20 épocas)...
+Epoch 1/20 - Loss: 0.100495 - Accuracy: 86.545%
+Epoch 2/20 - Loss: 0.0783471 - Accuracy: 89.9633%
+Epoch 3/20 - Loss: 0.0683662 - Accuracy: 91.4617%
+Epoch 4/20 - Loss: 0.0637927 - Accuracy: 92.145%
+Epoch 5/20 - Loss: 0.0602514 - Accuracy: 92.665%
+Epoch 6/20 - Loss: 0.0572165 - Accuracy: 93.045%
+Epoch 7/20 - Loss: 0.0555943 - Accuracy: 93.3267%
+Epoch 8/20 - Loss: 0.0545934 - Accuracy: 93.3817%
+Epoch 9/20 - Loss: 0.0534841 - Accuracy: 93.6433%
+Epoch 10/20 - Loss: 0.0523525 - Accuracy: 93.7633%
+Epoch 11/20 - Loss: 0.051581 - Accuracy: 93.85%
+Epoch 12/20 - Loss: 0.0515556 - Accuracy: 93.8983%
+Epoch 13/20 - Loss: 0.0514306 - Accuracy: 93.9383%
+Epoch 14/20 - Loss: 0.0506523 - Accuracy: 94.065%
+Epoch 15/20 - Loss: 0.0502796 - Accuracy: 94.1167%
+Epoch 16/20 - Loss: 0.0500504 - Accuracy: 94.13%
+Epoch 17/20 - Loss: 0.0488751 - Accuracy: 94.2783%
+Epoch 18/20 - Loss: 0.0483509 - Accuracy: 94.3967%
+Epoch 19/20 - Loss: 0.0475927 - Accuracy: 94.5283%
+Epoch 20/20 - Loss: 0.0476699 - Accuracy: 94.5183%
+Tiempo total entrenamiento: 3074.19 segundos
+Test Accuracy: 91.6% (9160/10000)
+
+Optmizador SGD
+Entrenamiento normal (20 épocas)...
+Epoch 1/20 - Loss: 0.343001 - Accuracy: 56.0033%
+Epoch 2/20 - Loss: 0.193438 - Accuracy: 75.4367%
+Epoch 3/20 - Loss: 0.14637 - Accuracy: 80.8783%
+Epoch 4/20 - Loss: 0.123209 - Accuracy: 83.8%
+Epoch 5/20 - Loss: 0.108572 - Accuracy: 85.6467%
+Epoch 6/20 - Loss: 0.0983219 - Accuracy: 86.94%
+Epoch 7/20 - Loss: 0.0906345 - Accuracy: 87.9883%
+Epoch 8/20 - Loss: 0.0845575 - Accuracy: 88.7717%
+Epoch 9/20 - Loss: 0.079554 - Accuracy: 89.42%
+Epoch 10/20 - Loss: 0.075312 - Accuracy: 90.02%
+Epoch 11/20 - Loss: 0.0716398 - Accuracy: 90.455%
+Epoch 12/20 - Loss: 0.0684114 - Accuracy: 90.935%
+Epoch 13/20 - Loss: 0.0655386 - Accuracy: 91.33%
+Epoch 14/20 - Loss: 0.0629611 - Accuracy: 91.68%
+Epoch 15/20 - Loss: 0.0606286 - Accuracy: 92.0017%
+Epoch 16/20 - Loss: 0.0585022 - Accuracy: 92.2483%
+Epoch 17/20 - Loss: 0.0565509 - Accuracy: 92.49%
+Epoch 18/20 - Loss: 0.0547492 - Accuracy: 92.7567%
+Epoch 19/20 - Loss: 0.0530769 - Accuracy: 92.9683%
+Epoch 20/20 - Loss: 0.0515184 - Accuracy: 93.18%
+Tiempo total entrenamiento: 2299.78 segundos
+Test Accuracy: 93.2% (9320/10000)
+
+Total ejecución: 12601.9 segundos
+
+Entrenamiento normal (20 épocas)...
+Test Accuracy: 40% (16/40)
