@@ -1,0 +1,28 @@
+# Ignorar carpeta build generada por CMake
+/build/
+/build*/
+
+# Archivos de CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Archivos de log o salida
+*.log
+*.out
+*.exe
+*.obj
+*.o
+*.a
+*.so
+*.dll
+
+# Archivos de configuración del IDE (ej. CLion, VSCode, etc.)
+.idea/
+.vscode/
+*.code-workspace
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
