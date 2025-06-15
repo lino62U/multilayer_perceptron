@@ -82,15 +82,6 @@ namespace Activations {
 
         return res;
     }
-    inline float leaky_relu(float x, float alpha = 0.1f) {
-        return x > 0 ? x : alpha * x;
-    }
-
-    inline float leaky_relu_derivative(float x, float alpha = 0.1f) {
-        return x > 0 ? 1.0f : alpha;
-    }
-
- 
 
     static ActivationFunction Sigmoid() {
         return ActivationFunction(sigmoid, sigmoid_derivative);
@@ -153,15 +144,9 @@ struct Neuron {
         }
     }
 
-    inline void computeDelta(bool is_output_neuron, bool softmax_output = false, float target = 0.0f) {
+    inline void computeDelta(bool is_output_neuron, float target = 0.0f) {
         if (is_output_neuron) {
-            if (softmax_output) {
-                // Para softmax + cross-entropy, delta = output - target
-                delta = (output - target);
-            } else {
-                // Para otras funciones de activación
-                delta = (output - target) * activation.derive(output);
-            }
+            delta = (output - target);
         } else {
             float sum = 0.0f;
             for (const auto& [neuron, weight] : outputs) {
@@ -286,20 +271,14 @@ public:
     }
 
     void connectTo(Layer* next_layer) {
-        static std::random_device rd; // Generador de semilla
-        static std::mt19937 gen(rd()); // Generador Mersenne Twister inicializado con rd
+        srand(RANDOM_SEED);
         for (auto& neuron : next_layer->neurons) {
             if (neuron->is_bias) continue;
             for (auto& prev_neuron : neurons) {
-                float scale = 0.1f;
-                size_t fan_in = neurons.size(); // Usa el tamaño de la capa actual (anterior a la conexión)
-                if (activation.activate == Activations::Sigmoid().activate) {
-                    scale = sqrt(1.0f / fan_in); // Xavier/Glorot
-                } else if (activation.activate == Activations::ReLU().activate) {
-                    scale = sqrt(2.0f / fan_in); // He initialization
-                }
-                std::normal_distribution<float> dist(0.0f, scale);
-                float* weight = new float(dist(gen)); // Usa el generador gen
+                //float* weight = new float((rand()%100)/100.0f - 0.5f);
+                // Por una inicialización más adecuada (He initialization para ReLU, Xavier para sigmoid):
+                float scale = sqrt(2.0f / prev_neuron->outputs.size());
+                float* weight = new float((rand()%100)/100.0f * scale - scale/2.0f);
                 
                 neuron->inputs.emplace_back(prev_neuron, weight);
                 prev_neuron->outputs.emplace_back(neuron, weight);
@@ -318,12 +297,9 @@ public:
     }
 
     void applyDropout() {
-        static std::random_device rd;
-        static std::mt19937 gen(rd());
-        std::uniform_real_distribution<float> dist(0.0f, 1.0f);
         for (size_t i = 0; i < neurons.size(); ++i) {
             if (!neurons[i]->is_bias) {
-                dropout_mask[i] = dist(gen) < dropout_rate;
+                dropout_mask[i] = (static_cast<float>(rand())) / RAND_MAX < dropout_rate;
                 neurons[i]->output = dropout_mask[i] ? 0.0f : neurons[i]->output / (1.0f - dropout_rate);
             }
         }
@@ -333,7 +309,7 @@ public:
         if (is_output_layer) {
             for (size_t i = 0; i < neurons.size(); ++i) {
                 if (!neurons[i]->is_bias) {
-                    neurons[i]->computeDelta(true, softmax_enabled, targets ? (*targets)[i] : 0.0f);
+                    neurons[i]->computeDelta(true, targets ? (*targets)[i] : 0.0f);
                 }
             }
         } else {
@@ -525,13 +501,11 @@ public:
         for (int epoch = 0; epoch < epochs; ++epoch) {
             // Mezclar índices para el epoch
             shuffle(indices.begin(), indices.end(), mt19937(random_device()()));
-            if (epoch > 0 && epoch % 5 == 0) {
-                adjustLearningRate(0.9f);
-            }
+            
             float total_loss = 0.0f;
             int correct = 0;
 
-            //setTrainingMode(true);
+            setTrainingMode(true);
 
             // Entrenamiento por lotes
             for (size_t batch_start = 0; batch_start < num_samples; batch_start += batch_size) {
@@ -561,7 +535,7 @@ public:
             int test_correct = 0;
             
             if (!test_inputs.empty()) {
-                //setTrainingMode(false);
+                setTrainingMode(false);
                 
                 #pragma omp parallel for reduction(+:test_loss, test_correct)
                 for (size_t i = 0; i < test_inputs.size(); ++i) {
@@ -575,7 +549,7 @@ public:
                     if (predicted == actual) test_correct++;
                 }
 
-               // setTrainingMode(true);
+                setTrainingMode(true);
             }
 
             float avg_test_loss = test_inputs.empty() ? 0.0f : test_loss / test_inputs.size();
@@ -592,27 +566,15 @@ public:
             }
         }
 
-       // setTrainingMode(false);
+        setTrainingMode(false);
     }
 
     inline float calculateLoss(const vector<float>& output, const vector<float>& target) const {
+        // Usar cross-entropy loss para softmax
         float loss = 0.0f;
-        const float epsilon = 1e-8f;
-        
-        if (softmax_output) {
-            for (size_t i = 0; i < output.size(); ++i) {
-                // Clip output para evitar log(0)
-                float clipped_output = max(epsilon, min(1.0f - epsilon, output[i]));
-                loss -= target[i] * log(clipped_output);
-            }
-        } else {
-            for (size_t i = 0; i < output.size(); ++i) {
-                float diff = output[i] - target[i];
-                loss += diff * diff;
-            }
-            loss /= output.size();
+        for (size_t i = 0; i < output.size(); ++i) {
+            loss -= target[i] * log(max(output[i], 1e-8f)); // Evitar log(0)
         }
-        
         return loss;
     }
 
@@ -724,14 +686,6 @@ public:
     void setTrainingMode(bool training) {
         for (auto& layer : layers) {
             layer->setTrainingMode(training);
-        }
-    }
-    void adjustLearningRate(float decay_factor = 0.95f) {
-        for (auto& layer : layers) {
-            for (size_t i = 0; i < layer->size(); ++i) {
-                Neuron* neuron = (*layer)[i];
-                neuron->learning_rate *= decay_factor;
-            }
         }
     }
 
@@ -881,37 +835,6 @@ void MNISTDataset::displayImage(const vector<float>& image, int rows, int cols) 
     }
 }
 
-vector<vector<float>> normalizeImages(const vector<vector<float>>& images) {
-    vector<vector<float>> normalized = images;
-    float mean = 0.0f, stddev = 0.0f;
-    size_t total_pixels = 0;
-
-    // Calcular media
-    for (const auto& image : images) {
-        for (float pixel : image) {
-            mean += pixel;
-            total_pixels++;
-        }
-    }
-    mean /= total_pixels;
-
-    // Calcular desviación estándar
-    for (const auto& image : images) {
-        for (float pixel : image) {
-            stddev += (pixel - mean) * (pixel - mean);
-        }
-    }
-    stddev = sqrt(stddev / total_pixels + 1e-8f);
-
-    // Normalizar
-    for (auto& image : normalized) {
-        for (float& pixel : image) {
-            pixel = (pixel - mean) / stddev;
-        }
-    }
-    return normalized;
-}
-
 // ==================== EJEMPLOS DE USO ====================
 int main() {
     // Elegir dataset: MNIST o Fashion-MNIST
@@ -919,8 +842,8 @@ int main() {
     const string prefix = "mnist"; // Cambia a "fashion" si es Fashion-MNIST
 
     const int full_epochs = 20  ;
-    const int training_samples = 60000;
-    const int test_samples = 10000;
+    const int training_samples = 10000;
+    const int test_samples = 5000;
 
     // Variables de tiempo
     chrono::time_point<chrono::system_clock> start, end;
@@ -951,42 +874,23 @@ int main() {
 
         cout << "Datos cargados: " << train_images.size() << " ejemplos.\n";
 
-
-        for (size_t i = 0; i < 5; ++i) {
-    cout << "Imagen #" << i + 1 << ":\n";
-    MNISTDataset::displayImage(train_images[i]);
-    cout << "Etiqueta: ";
-    for (size_t j = 0; j < train_labels[i].size(); ++j) {
-        if (train_labels[i][j] == 1.0f) {
-            cout << j << endl;
-            break;
-        }
-    }
-    cout << endl;
-}
-
-
-        // Cambia estos parámetros:
+        // Crear red neuronal
         MultilayerPerceptron mlp;
-        mlp.createNetwork({784, 256, 128, 10}, {
-            Activations::Sigmoid(),  // Agrega esta función de activación
+        mlp.createNetwork({784, 128, 64, 10}, {
+            Activations::Sigmoid(),
             Activations::Sigmoid(),
             Activations::Softmax()
         });
-
-        // Configuración mejorada del optimizador
-        const float learning_rate = 0.001f;  // Tasa más alta para Adam
-        mlp.setOptimizer(OptimizerType::Adam, learning_rate);
-        mlp.setWeightDecay(0.001f);       // Regularización L2 más fuerte
-        mlp.setDropoutRate(0.2f);          // Dropout más agresivo
-        const int batch_size = 128;         // Batch más grande
+       mlp.setOptimizer(OptimizerType::Adam, 0.001f);  // Tasa de aprendizaje típica para Adam
+       //mlp.setWeightDecay(0.001f);  // Configurar weight decay
+       //mlp.setDropoutRate(0.2f);  // 50% de dropout en capas ocultas
 
        //mlp.setTrainingMode(true);  // Activar dropout
 
         // ===== Entrenamiento completo =====
         cout << "\nEntrenamiento normal (" << full_epochs << " épocas) ADAM...\n";
         auto train_start = chrono::system_clock::now();
-        mlp.trainDataset(train_images, train_labels, test_images, test_labels, full_epochs,batch_size , prefix + "_train_" + to_string(full_epochs) +"epochs_adam_decay.csv");
+        mlp.trainDataset(train_images, train_labels, test_images, test_labels, full_epochs,1, prefix + "_train_" + to_string(full_epochs) +"epochs_adam_decay.csv");
         auto train_end = chrono::system_clock::now();
         train_time = train_end - train_start;
 
@@ -1002,6 +906,69 @@ int main() {
         mlp.saveModel(prefix + "_model_" + to_string(full_epochs) + "epochs.bin");
 
 
+
+
+
+/*
+
+        /////////////////////////
+        // Crear red neuronal
+        MultilayerPerceptron mlp2;
+        mlp2.createNetwork({784, 64, 32, 10}, {
+            Activations::Sigmoid(),
+            Activations::Sigmoid(),
+            Activations::Softmax()
+        });
+       mlp2.setOptimizer(OptimizerType::RMSProp, 0.001f);  // Tasa de aprendizaje típica para Adam
+
+        // ===== Entrenamiento completo =====
+        cout << "\nEntrenamiento normal (" << full_epochs << " épocas) RMSProp...\n";
+        auto train_start2 = chrono::system_clock::now();
+        mlp2.trainDataset(train_images, train_labels, test_images, test_labels,  full_epochs,1, prefix + "_train_" + to_string(full_epochs) +"epochs_RMS.csv");
+        auto train_end2 = chrono::system_clock::now();
+        train_time = train_end2 - train_start2;
+
+        cout << "Tiempo total entrenamiento: " << train_time.count() << " segundos\n";
+
+        // Evaluación
+        auto test_start2 = chrono::system_clock::now();
+        mlp2.testModel(test_images, test_labels, false);
+        auto test_end2 = chrono::system_clock::now();
+        test_time = test_end2 - test_start2;
+
+        
+        
+        
+        
+        
+        
+        
+        //////////////////////
+        // Crear red neuronal
+        MultilayerPerceptron mlp3;
+        mlp3.createNetwork({784, 64, 32, 10}, {
+            Activations::Sigmoid(),
+            Activations::Sigmoid(),
+            Activations::Softmax()
+        });
+       mlp3.setOptimizer(OptimizerType::SGD, 0.001f);  // Tasa de aprendizaje típica para Adam
+
+        // ===== Entrenamiento completo =====
+        cout << "\nEntrenamiento normal (" << full_epochs << " épocas) SGD ...\n";
+        auto train_start3 = chrono::system_clock::now();
+        mlp3.trainDataset(train_images, train_labels, test_images, test_labels,  full_epochs,1, prefix + "_train_" + to_string(full_epochs) +"epochs_sgd.csv");
+        auto train_end3 = chrono::system_clock::now();
+        train_time = train_end3 - train_start3;
+
+        cout << "Tiempo total entrenamiento: " << train_time.count() << " segundos\n";
+
+        // Evaluación
+        auto test_start3 = chrono::system_clock::now();
+        mlp3.testModel(test_images, test_labels, false);
+        auto test_end3 = chrono::system_clock::now();
+        test_time = test_end3 - test_start3;
+
+*/
 
     } catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;

@@ -66,7 +66,6 @@ vector<double> softmax(const vector<double>& input) {
 // Clase base para optimizadores
 class Optimizer {
 public:
-    Optimizer(double weight_decay = 0.0) : weight_decay(weight_decay) {}
     virtual ~Optimizer() = default;
     virtual void update_weights(vector<vector<double>>& weights, 
                               vector<vector<double>>& d_weights,
@@ -76,16 +75,11 @@ public:
                               size_t layer_idx = 0) = 0;
     virtual string get_name() const = 0;
     virtual void initialize_for_layer(size_t layer_idx, size_t neurons, size_t inputs) {}
-    
-protected:
-    double weight_decay;
 };
 
 // SGD (Descenso de Gradiente Estocástico)
 class SGD : public Optimizer {
 public:
-    SGD(double weight_decay = 0.0) : Optimizer(weight_decay) {}
-    
     void update_weights(vector<vector<double>>& weights, 
                        vector<vector<double>>& d_weights,
                        vector<double>& biases,
@@ -94,21 +88,13 @@ public:
                        size_t layer_idx = 0) override {
         for (size_t i = 0; i < weights.size(); ++i) {
             for (size_t j = 0; j < weights[i].size(); ++j) {
-                // Aplicar weight decay si está configurado
-                if (weight_decay > 0) {
-                    //d_weights[i][j] += weight_decay * weights[i][j];
-                     weights[i][j] -= learning_rate * weight_decay * weights[i][j];
-
-                }
                 weights[i][j] -= learning_rate * d_weights[i][j];
             }
             biases[i] -= learning_rate * d_biases[i];
         }
     }
     
-    string get_name() const override { 
-        return weight_decay > 0 ? "SGD (weight decay=" + to_string(weight_decay) + ")" : "SGD"; 
-    }
+    string get_name() const override { return "SGD"; }
 };
 
 // RMSprop
@@ -120,8 +106,6 @@ private:
     vector<vector<double>> s_biases;
     
 public:
-    RMSprop(double weight_decay = 0.0) : Optimizer(weight_decay) {}
-    
     void initialize_for_layer(size_t layer_idx, size_t neurons, size_t inputs) override {
         if (layer_idx >= s_weights.size()) {
             s_weights.resize(layer_idx + 1);
@@ -140,12 +124,6 @@ public:
                        size_t layer_idx = 0) override {
         for (size_t i = 0; i < weights.size(); ++i) {
             for (size_t j = 0; j < weights[i].size(); ++j) {
-                // Aplicar weight decay si está configurado
-                if (weight_decay > 0) {
-                    //d_weights[i][j] += weight_decay * weights[i][j];
-                    weights[i][j] -= learning_rate * weight_decay * weights[i][j];
-                }
-                
                 s_weights[layer_idx][i][j] = gamma * s_weights[layer_idx][i][j] + 
                                            (1 - gamma) * d_weights[i][j] * d_weights[i][j];
                 weights[i][j] -= learning_rate * d_weights[i][j] / 
@@ -159,9 +137,7 @@ public:
         }
     }
     
-    string get_name() const override { 
-        return weight_decay > 0 ? "RMSprop (weight decay=" + to_string(weight_decay) + ")" : "RMSprop"; 
-    }
+    string get_name() const override { return "RMSprop"; }
 };
 
 // Adam
@@ -177,8 +153,6 @@ private:
     int t = 0;
     
 public:
-    Adam(double weight_decay = 0.0) : Optimizer(weight_decay) {}
-    
     void initialize_for_layer(size_t layer_idx, size_t neurons, size_t inputs) override {
         if (layer_idx >= m_weights.size()) {
             m_weights.resize(layer_idx + 1);
@@ -203,12 +177,6 @@ public:
         
         for (size_t i = 0; i < weights.size(); ++i) {
             for (size_t j = 0; j < weights[i].size(); ++j) {
-                // Aplicar weight decay si está configurado
-                if (weight_decay > 0) {
-                    //d_weights[i][j] += weight_decay * weights[i][j];
-                    weights[i][j] -= learning_rate * weight_decay * weights[i][j];
-                }
-                
                 m_weights[layer_idx][i][j] = beta1 * m_weights[layer_idx][i][j] + 
                                            (1 - beta1) * d_weights[i][j];
                 v_weights[layer_idx][i][j] = beta2 * v_weights[layer_idx][i][j] + 
@@ -232,9 +200,7 @@ public:
         }
     }
     
-    string get_name() const override { 
-        return weight_decay > 0 ? "Adam (weight decay=" + to_string(weight_decay) + ")" : "Adam"; 
-    }
+    string get_name() const override { return "Adam"; }
 };
 
 // Capa de la red neuronal
@@ -242,16 +208,9 @@ class Layer {
 public:
     enum Activation { SIGMOID, RELU, TANH, SOFTMAX, LINEAR };
     
-    Layer(size_t input_size, size_t output_size, Activation activation, bool is_output = false,
-          double dropout_rate = 0.0)
-        : input_size(input_size), output_size(output_size), activation(activation), 
-          is_output(is_output), dropout_rate(dropout_rate) {
+    Layer(size_t input_size, size_t output_size, Activation activation, bool is_output = false)
+        : input_size(input_size), output_size(output_size), activation(activation), is_output(is_output) {
         initialize_weights();
-        
-        // Inicializar generador de números aleatorios para dropout
-        random_device rd;
-        dropout_gen = mt19937(rd());
-        dropout_dist = bernoulli_distribution(1.0 - dropout_rate);
     }
     
     void initialize_weights() {
@@ -270,7 +229,7 @@ public:
         }
     }
     
-    vector<double> forward(const vector<double>& input, bool training = false) {
+    vector<double> forward(const vector<double>& input) {
         this->input = input;
         output.resize(output_size);
         
@@ -290,15 +249,6 @@ public:
             for (auto& val : activated_output) val = tanh(val);
         } else if (activation == SOFTMAX && is_output) {
             activated_output = softmax(output);
-        }
-        
-        // Aplicar dropout si no es la capa de salida y estamos en modo entrenamiento
-        if (dropout_rate > 0.0 && training && !is_output) {
-            dropout_mask.resize(activated_output.size());
-            for (size_t i = 0; i < activated_output.size(); ++i) {
-                dropout_mask[i] = dropout_dist(dropout_gen);
-                activated_output[i] = dropout_mask[i] ? activated_output[i] / (1.0 - dropout_rate) : 0.0;
-            }
         }
         
         return activated_output;
@@ -333,12 +283,6 @@ public:
         
         for (size_t i = 0; i < output_size; ++i) {
             double delta = output_error[i] * activation_derivative[i];
-            
-            // Aplicar máscara de dropout si está activo
-            if (dropout_rate > 0.0 && !is_output && !dropout_mask.empty()) {
-                delta *= dropout_mask[i] / (1.0 - dropout_rate);
-            }
-            
             d_biases[i] = delta;
             
             for (size_t j = 0; j < input_size; ++j) {
@@ -359,15 +303,9 @@ private:
     size_t input_size, output_size;
     Activation activation;
     bool is_output;
-    double dropout_rate;
     vector<vector<double>> weights;
     vector<double> biases;
     vector<double> input, output, activated_output;
-    
-    // Variables para dropout
-    mt19937 dropout_gen;
-    bernoulli_distribution dropout_dist;
-    vector<bool> dropout_mask;
 };
 
 // MLP (Perceptrón Multicapa)
@@ -375,27 +313,22 @@ class MLP {
 public:
     MLP(size_t input_size, const vector<size_t>& hidden_layers, size_t output_size, 
         Layer::Activation hidden_activation = Layer::RELU, 
-        Layer::Activation output_activation = Layer::SOFTMAX,
-        double dropout_rate = 0.0,
-        double weight_decay = 0.0) 
-        : dropout_rate(dropout_rate), weight_decay(weight_decay) {
+        Layer::Activation output_activation = Layer::SOFTMAX) {
         size_t prev_size = input_size;
         for (size_t neurons : hidden_layers) {
-            layers.emplace_back(prev_size, neurons, hidden_activation, false, dropout_rate);
+            layers.emplace_back(prev_size, neurons, hidden_activation);
             prev_size = neurons;
         }
         layers.emplace_back(prev_size, output_size, output_activation, true);
     }
     
-    void set_optimizer(const string& optimizer_name, double weight_decay = 0.0) {
-        this->weight_decay = weight_decay;
-        
+    void set_optimizer(const string& optimizer_name) {
         if (optimizer_name == "sgd") {
-            optimizer = make_unique<SGD>(weight_decay);
+            optimizer = make_unique<SGD>();
         } else if (optimizer_name == "rmsprop") {
-            optimizer = make_unique<RMSprop>(weight_decay);
+            optimizer = make_unique<RMSprop>();
         } else if (optimizer_name == "adam") {
-            optimizer = make_unique<Adam>(weight_decay);
+            optimizer = make_unique<Adam>();
         } else {
             throw invalid_argument("Optimizador desconocido");
         }
@@ -405,7 +338,7 @@ public:
     vector<double> predict(const vector<double>& input) {
         vector<double> output = input;
         for (auto& layer : layers) {
-            output = layer.forward(output, false); // false para desactivar dropout en predicción
+            output = layer.forward(output);
         }
         return output;
     }
@@ -444,12 +377,6 @@ public:
         log_file << "epoch,train_loss,train_accuracy,test_loss,test_accuracy,time_ms\n";
         
         cout << "Comenzando entrenamiento con " << optimizer->get_name() << "\n";
-        if (dropout_rate > 0) {
-            cout << "Dropout rate: " << dropout_rate << "\n";
-        }
-        if (weight_decay > 0) {
-            cout << "Weight decay: " << weight_decay << "\n";
-        }
         cout << "Epochs: " << epochs << ", Tasa de aprendizaje: " << learning_rate << "\n";
         cout << "Guardando logs en: " << log_filename << "\n\n";
         
@@ -503,8 +430,6 @@ public:
 private:
     vector<Layer> layers;
     unique_ptr<Optimizer> optimizer = make_unique<SGD>();
-    double dropout_rate = 0.0;
-    double weight_decay = 0.0;
     
     void initialize_optimizer() {
         for (size_t i = 0; i < layers.size(); ++i) {
@@ -516,12 +441,7 @@ private:
     double train(const vector<double>& input, 
                 const vector<double>& target, 
                 double learning_rate) {
-        // Forward pass con dropout activado
-        vector<double> output = input;
-        for (auto& layer : layers) {
-            output = layer.forward(output, true); // true para activar dropout en entrenamiento
-        }
-        
+        vector<double> output = predict(input);
         vector<double> output_error(output.size());
         
         for (size_t i = 0; i < output.size(); ++i) {
@@ -548,6 +468,7 @@ void print_vector(const vector<double>& vec) {
     }
     cout << "]" << endl;
 }
+
 
 // Clase para manejar datos MNIST con double
 class MNISTDataset {
@@ -654,8 +575,6 @@ int main() {
     const int epochs = 20;
     const double learning_rate = 0.001;
     const int print_interval = 1;
-    const double dropout_rate = 0.2; // Tasa de dropout
-    const double weight_decay = 0.001; // Coeficiente de weight decay
 
     try {
         cout << "Cargando dataset desde: " << dataset_path << endl;
@@ -674,15 +593,13 @@ int main() {
             for (auto h : hidden_layers) cout << h << " ";
             cout << "\n🎯 Salida: " << output_size << " clases" << endl;
             cout << "🔁 Épocas: " << epochs << ", 📈 Learning rate: " << learning_rate << endl;
-            cout << "💧 Dropout rate: " << dropout_rate << ", ⚖️ Weight decay: " << weight_decay << endl;
 
             // Crear red neuronal
-            MLP mlp(input_size, hidden_layers, output_size, Layer::RELU, Layer::SOFTMAX, 
-                   dropout_rate, weight_decay);
-            mlp.set_optimizer(opt, weight_decay);
+            MLP mlp(input_size, hidden_layers, output_size, Layer::RELU, Layer::SOFTMAX);
+            mlp.set_optimizer(opt);
 
             // Nombre de archivo log
-            string log_file = prefix + "_" + opt + "_decay_log.csv";
+            string log_file = prefix + "_" + opt + "_log.csv";
             cout << "📄 Guardando log de entrenamiento en: " << log_file << endl;
 
             // Entrenar modelo

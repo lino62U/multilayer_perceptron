@@ -1,0 +1,21 @@
+epoch,train_loss,train_accuracy,test_loss,test_accuracy,time_ms
+Epoch    1 - Train Loss:   0.404811 Acc:  53.25% | Test Loss:    2.97895 Acc:  30.66% Time: 57357ms
+Epoch    2 - Train Loss:   0.281225 Acc:  70.55% | Test Loss:    1.69515 Acc:  57.81% Time: 60565ms
+Epoch    3 - Train Loss:    0.23795 Acc:  77.59% | Test Loss:    1.06327 Acc:  69.04% Time: 62116ms
+Epoch    4 - Train Loss:   0.215076 Acc:  79.04% | Test Loss:    1.14058 Acc:  69.99% Time: 73150ms
+Epoch    5 - Train Loss:   0.200222 Acc:  79.45% | Test Loss:    1.14099 Acc:  70.95% Time: 84839ms
+Epoch    6 - Train Loss:   0.190044 Acc:  78.26% | Test Loss:    1.25064 Acc:   68.7% Time: 75234ms
+Epoch    7 - Train Loss:   0.182618 Acc:  79.37% | Test Loss:    1.24167 Acc:  70.81% Time: 61873ms
+Epoch    8 - Train Loss:   0.176134 Acc:  82.06% | Test Loss:    1.05189 Acc:  74.58% Time: 61839ms
+Epoch    9 - Train Loss:   0.169477 Acc:  80.06% | Test Loss:    1.17327 Acc:  71.44% Time: 61688ms
+Epoch   10 - Train Loss:    0.16505 Acc:  80.43% | Test Loss:    1.21396 Acc:  72.07% Time: 62714ms
+Epoch   11 - Train Loss:   0.158534 Acc:     85% | Test Loss:   0.870393 Acc:   79.3% Time: 62172ms
+Epoch   12 - Train Loss:   0.153269 Acc:  85.46% | Test Loss:   0.837099 Acc:  80.35% Time: 61877ms
+Epoch   13 - Train Loss:   0.152634 Acc:   85.5% | Test Loss:   0.841212 Acc:  79.95% Time: 61476ms
+Epoch   14 - Train Loss:   0.147171 Acc:  87.17% | Test Loss:   0.751032 Acc:  82.35% Time: 62144ms
+Epoch   15 - Train Loss:   0.145227 Acc:  87.43% | Test Loss:    0.70663 Acc:  82.83% Time: 62463ms
+Epoch   16 - Train Loss:   0.141821 Acc:  87.38% | Test Loss:   0.737329 Acc:  82.81% Time: 63265ms
+Epoch   17 - Train Loss:   0.138083 Acc:  88.72% | Test Loss:   0.660596 Acc:  84.75% Time: 62596ms
+Epoch   18 - Train Loss:   0.137128 Acc:  89.42% | Test Loss:   0.647833 Acc:  85.58% Time: 61521ms
+Epoch   19 - Train Loss:   0.134488 Acc:  88.92% | Test Loss:   0.746458 Acc:  84.18% Time: 62538ms
+Epoch   20 - Train Loss:   0.132907 Acc:  89.71% | Test Loss:   0.682095 Acc:  85.07% Time: 61679ms

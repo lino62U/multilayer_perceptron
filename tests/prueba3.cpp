@@ -49,6 +49,7 @@ namespace Activations {
     static ActivationFunction Softmax();
 }
 
+// Modificar la estructura Neuron para incluir parámetros de optimización
 struct Neuron {
     float output = 0.0f;
     float net_input = 0.0f;
@@ -61,7 +62,6 @@ struct Neuron {
     // Parámetros para optimizadores
     OptimizerType optimizer = OptimizerType::SGD;
     float learning_rate = LEARNING_RATE;
-    float weight_decay = 0.0f;  // Nuevo: factor de weight decay
     
     // Para RMSProp
     vector<float> squared_gradients;
@@ -86,9 +86,6 @@ struct Neuron {
     void updateWeightsSGD();
     void updateWeightsRMSProp();
     void updateWeightsAdam();
-    
-    // Nueva función para configurar weight decay
-    void setWeightDecay(float decay) { weight_decay = decay; }
 };
 
 
@@ -98,9 +95,6 @@ protected:
     ActivationFunction activation;
     bool is_output_layer = false;
     bool softmax_enabled = false;
-    float dropout_rate = 0.0f;  // Nuevo: tasa de dropout (0 = no dropout)
-    vector<bool> dropout_mask;  // Nuevo: máscara de neuronas desactivadas
-    bool is_training = true;    // Nuevo: flag para modo entrenamiento
 
 public:
     Layer(int num_neurons, ActivationFunction act, bool has_bias = true);
@@ -123,16 +117,6 @@ public:
     // Nuevas funciones para guardar/cargar pesos
     void saveWeights(ofstream& file) const;
     void loadWeights(ifstream& file);
-    
-    // Nuevas funciones para dropout
-    void setDropoutRate(float rate) { 
-        dropout_rate = rate; 
-        if (rate > 0.0f) {
-            dropout_mask.resize(neurons.size(), false);
-        }
-    }
-    void setTrainingMode(bool training) { is_training = training; }
-    void applyDropout();
 };
 
 class MultilayerPerceptron {
@@ -151,11 +135,11 @@ public:
     
     // Nuevas funciones de entrenamiento y evaluación
     void trainDataset(const vector<vector<float>>& inputs, 
-                     const vector<vector<float>>& targets, 
-                     const vector<vector<float>>& test_inputs,
-                     const vector<vector<float>>& test_targets,
-                     int epochs, int batch_size,
-                     const string& metrics_filename);
+                                     const vector<vector<float>>& targets, 
+                                     const vector<vector<float>>& test_inputs,
+                                     const vector<vector<float>>& test_targets,
+                                     int epochs, int batch_size,
+                                     const string& metrics_filename) ;
     float calculateLoss(const vector<float>& output, const vector<float>& target) const;
     float calculateAccuracy(const vector<vector<float>>& inputs, 
                           const vector<vector<float>>& targets) const;
@@ -165,6 +149,8 @@ public:
     void loadModel(const string& filename);
     
     void printNetwork() const;
+
+
 
     // Nueva función para configurar el optimizador
     void setOptimizer(OptimizerType type, float learning_rate = LEARNING_RATE) {
@@ -178,29 +164,7 @@ public:
             }
         }
     }
-    
-    // Nuevas funciones para weight decay y dropout
-    void setWeightDecay(float decay) {
-        for (auto& layer : layers) {
-            for (size_t i = 0; i < layer->size(); ++i) {
-                Neuron* neuron = (*layer)[i];
-                neuron->setWeightDecay(decay);
-            }
-        }
-    }
-    
-    void setDropoutRate(float rate) {
-        // No aplicar dropout a la capa de entrada ni a la de salida
-        for (size_t i = 1; i < layers.size() - 1; ++i) {
-            layers[i]->setDropoutRate(rate);
-        }
-    }
-    
-    void setTrainingMode(bool training) {
-        for (auto& layer : layers) {
-            layer->setTrainingMode(training);
-        }
-    }
+
 
     void testModel(const vector<vector<float>>& test_images, 
                   const vector<vector<float>>& test_labels,
@@ -384,12 +348,7 @@ void Neuron::updateWeights() {
 
 void Neuron::updateWeightsSGD() {
     for (auto& [neuron, weight] : inputs) {
-        float gradient = delta * neuron->output;
-        // Aplicar weight decay si está configurado
-        if (weight_decay > 0.0f) {
-            gradient += weight_decay * (*weight);
-        }
-        *weight -= learning_rate * gradient;
+        *weight -= learning_rate * delta * neuron->output;
     }
 }
 
@@ -397,11 +356,6 @@ void Neuron::updateWeightsRMSProp() {
     for (size_t i = 0; i < inputs.size(); ++i) {
         auto& [neuron, weight] = inputs[i];
         float gradient = delta * neuron->output;
-        
-        // Aplicar weight decay si está configurado
-        if (weight_decay > 0.0f) {
-            gradient += weight_decay * (*weight);
-        }
         
         // Actualizar la media móvil de los gradientes al cuadrado
         squared_gradients[i] = rmsprop_rho * squared_gradients[i] + 
@@ -413,28 +367,22 @@ void Neuron::updateWeightsRMSProp() {
 }
 
 void Neuron::updateWeightsAdam() {
-    t++;
+    t++;  // Incrementar el contador de pasos
+    
     for (size_t i = 0; i < inputs.size(); ++i) {
         auto& [neuron, weight] = inputs[i];
+        float gradient = delta * neuron->output;
         
-        // 1. Calcular gradiente con weight decay
-        float grad = delta * neuron->output;
-        if (weight_decay > 0.0f) grad += weight_decay * (*weight);
+        // Actualizar momentos
+        m[i] = adam_beta1 * m[i] + (1 - adam_beta1) * gradient;
+        v[i] = adam_beta2 * v[i] + (1 - adam_beta2) * gradient * gradient;
         
-        // 2. Actualizar momentos
-        m[i] = adam_beta1 * m[i] + (1.0f - adam_beta1) * grad;
-        v[i] = adam_beta2 * v[i] + (1.0f - adam_beta2) * grad * grad;
+        // Calcular momentos corregidos de sesgo
+        float m_hat = m[i] / (1 - pow(adam_beta1, t));
+        float v_hat = v[i] / (1 - pow(adam_beta2, t));
         
-        // 3. Corrección de bias
-        float m_hat = m[i] / (1.0f - powf(adam_beta1, t));
-        float v_hat = v[i] / (1.0f - powf(adam_beta2, t));
-        
-        // 4. Actualizar peso
-        *weight -= learning_rate * m_hat / (sqrtf(v_hat) + adam_epsilon);
-        
-        // 5. Limitar pesos a rango razonable
-        if (*weight > 5.0f) *weight = 5.0f;
-        if (*weight < -5.0f) *weight = -5.0f;
+        // Actualizar el peso
+        *weight -= learning_rate * m_hat / (sqrt(v_hat) + adam_epsilon);
     }
 }
 
@@ -475,31 +423,6 @@ void Layer::connectTo(Layer* next_layer) {
 void Layer::computeOutputs() {
     for (auto& neuron : neurons) {
         neuron->computeOutput();
-    }
-    
-    // Aplicar dropout si está en modo entrenamiento y la tasa es > 0
-    if (dropout_rate > 0.0f) {
-        applyDropout();
-    }
-}
-
-void Layer::applyDropout() {
-    if (!is_training) return;  // No aplicar dropout en modo evaluación
-
-    // Solo aplicar dropout a neuronas que no son bias
-    for (size_t i = 0; i < neurons.size(); ++i) {
-        if (!neurons[i]->is_bias) {
-            // Generar máscara de dropout
-            dropout_mask[i] = (static_cast<float>(rand()) / RAND_MAX) < dropout_rate;
-            
-            // Aplicar máscara
-            if (dropout_mask[i]) {
-                neurons[i]->output = 0.0f;
-            } else {
-                // Escalar la salida durante el entrenamiento
-                neurons[i]->output /= (1.0f - dropout_rate);
-            }
-        }
     }
 }
 
@@ -668,7 +591,6 @@ void MultilayerPerceptron::trainDataset(const vector<vector<float>>& inputs,
     if (!test_inputs.empty() && test_inputs.size() != test_targets.size()) {
         throw runtime_error("Test inputs and test targets must have the same size");
     }
-
     // Abrir archivo para guardar las métricas
     ofstream metrics_file(metrics_filename);
     if (!metrics_file) {
@@ -681,9 +603,6 @@ void MultilayerPerceptron::trainDataset(const vector<vector<float>>& inputs,
     for (int epoch = 0; epoch < epochs; ++epoch) {
         float total_loss = 0.0f;
         int correct = 0;
-
-        // Modo entrenamiento (activar dropout si está configurado)
-        setTrainingMode(true);
 
         for (size_t i = 0; i < inputs.size(); ++i) {
             setInput(inputs[i]);
@@ -699,17 +618,16 @@ void MultilayerPerceptron::trainDataset(const vector<vector<float>>& inputs,
             if (predicted == actual) correct++;
         }
 
-        // Calcular métricas de entrenamiento
+        // Calcular métricas
         float avg_loss = total_loss / inputs.size();
         float accuracy = static_cast<float>(correct) / inputs.size() * 100.0f;
 
-        // Evaluación en test (desactivar dropout)
+
+         // Evaluación en test
         float test_loss = 0.0f;
         int test_correct = 0;
         
         if (!test_inputs.empty()) {
-            setTrainingMode(false);  // Desactivar dropout para evaluación
-            
             #pragma omp parallel for reduction(+:test_loss, test_correct)
             for (size_t i = 0; i < test_inputs.size(); ++i) {
                 setInput(test_inputs[i]);
@@ -721,13 +639,12 @@ void MultilayerPerceptron::trainDataset(const vector<vector<float>>& inputs,
                 int actual = distance(test_targets[i].begin(), max_element(test_targets[i].begin(), test_targets[i].end()));
                 if (predicted == actual) test_correct++;
             }
-
-            // Volver a modo entrenamiento para la siguiente época
-            setTrainingMode(true);
         }
 
         float avg_test_loss = test_inputs.empty() ? 0.0f : test_loss / test_inputs.size();
         float test_accuracy = test_inputs.empty() ? 0.0f : static_cast<float>(test_correct) / test_inputs.size() * 100.0f;
+
+
 
         // Mostrar estadísticas de la época
         cout << "Epoch " << epoch + 1 << "/" << epochs 
@@ -741,11 +658,7 @@ void MultilayerPerceptron::trainDataset(const vector<vector<float>>& inputs,
             metrics_file << epoch + 1 << "\t" << avg_loss << "\t" << accuracy << "\t" << avg_test_loss << "\t" << test_accuracy << "\n";
         }
     }
-
-    // Al final del entrenamiento, dejar la red en modo evaluación
-    setTrainingMode(false);
 }
-
 float MultilayerPerceptron::calculateLoss(const vector<float>& output, const vector<float>& target) const {
     float loss = 0.0f;
     for (size_t i = 0; i < output.size(); ++i) {
@@ -930,8 +843,10 @@ int main() {
     const string prefix = "mnist"; // Cambia a "fashion" si es Fashion-MNIST
 
     const int full_epochs = 20  ;
-    const int training_samples = 30000;
-    const int test_samples = 5000;
+    const int half_epochs = full_epochs / 2;
+    const int double_epochs = full_epochs * 2;
+    const int training_samples = 60000;
+    const int test_samples = 10000;
 
     // Variables de tiempo
     chrono::time_point<chrono::system_clock> start, end;
@@ -970,15 +885,11 @@ int main() {
             Activations::Softmax()
         });
        mlp.setOptimizer(OptimizerType::Adam, 0.001f);  // Tasa de aprendizaje típica para Adam
-       mlp.setWeightDecay(0.01f);  // Configurar weight decay
-       mlp.setDropoutRate(0.2f);  // 50% de dropout en capas ocultas
-
-       //mlp.setTrainingMode(true);  // Activar dropout
 
         // ===== Entrenamiento completo =====
         cout << "\nEntrenamiento normal (" << full_epochs << " épocas) ADAM...\n";
         auto train_start = chrono::system_clock::now();
-        mlp.trainDataset(train_images, train_labels, test_images, test_labels, full_epochs,1, prefix + "_train_" + to_string(full_epochs) +"epochs_adam_decay.csv");
+        mlp.trainDataset(train_images, train_labels, test_images, test_labels, full_epochs,1, prefix + "_train_" + to_string(full_epochs) +"epochs_adam.csv");
         auto train_end = chrono::system_clock::now();
         train_time = train_end - train_start;
 
@@ -1070,6 +981,23 @@ int main() {
 
 
 
+
+
+
+
+    auto test_images2 = MNISTDataset::loadImages("train-images.idx3-ubyte", test_samples);
+    auto test_labels2 = MNISTDataset::loadLabels("train-labels.idx1-ubyte", test_samples);
+
+
+    // Crear red neuronal
+    MultilayerPerceptron mlp;
+    
+    // ===== Entrenamiento completo =====
+    cout << "\nEntrenamiento normal (" << full_epochs << " épocas)...\n";
+    
+    // Guardar modelo
+    mlp.loadModel("mnist_model_30epochs.bin");
+    mlp.testModel(test_images2, test_labels2,false);
 
 
     return 0;
